@@ -1,0 +1,10 @@
+[package]
+name = "vulkan-parse"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quick-xml = "~0.25.0"
+logos = "~0.12.1"
+peg = "~0.8.1"
+bitflags = "~1.3"
