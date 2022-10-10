@@ -1,11 +1,82 @@
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    num::{NonZeroU32, NonZeroU8},
+};
+
+use crate::{Expression, Token};
 
 use super::common::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PointerKind {
+    Single,
+    Double { inner_is_const: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArrayLength<'a> {
+    Static(NonZeroU32),
+    Constant(Cow<'a, str>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicLength<'a> {
+    NullTerminated,
+    // FIXME only found in VkAccelerationStructureBuildGeometryInfoKHR->ppGeometries, is this a mistake?
+    Static(NonZeroU32),
+    Parameterized(Cow<'a, str>),
+    ParameterizedField {
+        parameter: Cow<'a, str>,
+        field: Cow<'a, str>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicShapeKind<'a> {
+    Expression {
+        latex_expr: Cow<'a, str>,
+        c_expr: Expression<'a>,
+    },
+    Single(DynamicLength<'a>),
+    Double(DynamicLength<'a>, DynamicLength<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OptionalKind {
+    Single(bool),
+    Double(bool, bool),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternSyncKind<'a> {
+    /// externsync="true"
+    Value,
+    Fields(Box<[Cow<'a, str>]>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoAutoValidityKind {
+    /// noautovalidity="true"
+    Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldLike<'a> {
     pub name: Cow<'a, str>,
     pub type_name: Cow<'a, str>,
+    pub is_struct: bool,
+    pub is_const: bool,
+    pub pointer_kind: Option<PointerKind>,
+    pub bitfield_size: Option<NonZeroU8>,
+    pub array_shape: Option<Box<[ArrayLength<'a>]>>,
+    pub dynamic_shape: Option<DynamicShapeKind<'a>>,
+    pub extern_sync: Option<ExternSyncKind<'a>>,
+    pub optional: Option<OptionalKind>,
+    pub no_auto_validity: Option<NoAutoValidityKind>,
+    /// The field-like that paramertizes what type of vulkan handle this one is.
+    /// => This field-like is a generic vulkan handle, and it is an error if `type_name` isn't `uint64_t`
+    pub object_type: Option<Cow<'a, str>>,
+    pub comment: Option<Cow<'a, str>>,
 }
 
 /// <type>
@@ -52,7 +123,24 @@ pub struct IncludeType<'a> {
 #[derive(Debug)]
 pub struct DefineType<'a> {
     pub name: Cow<'a, str>,
-    // ...
+    pub comment: Option<Cow<'a, str>>,
+    pub requires: Option<Cow<'a, str>>,
+    pub is_disabled: bool,
+    pub value: DefineTypeValue<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DefineTypeValue<'a> {
+    Expression(Expression<'a>),
+    FunctionDefine {
+        params: Box<[Cow<'a, str>]>,
+        expression: Box<[Token<'a>]>,
+    },
+    MacroFunctionCall {
+        name: Cow<'a, str>,
+        args: Box<[Expression<'a>]>,
+    },
+    Code(Box<[Token<'a>]>),
 }
 
 // TODO: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
