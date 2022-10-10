@@ -1,14 +1,9 @@
-use quick_xml::Reader;
+mod typed_registry;
+pub use crate::typed_registry::*;
 
-#[derive(Debug)]
-pub struct Registry;
+mod parse_xml;
+pub use crate::parse_xml::*;
 
-#[derive(Debug)]
-pub enum Error {
-
-}
-
-pub fn parse(xml: &str) -> Result<Registry, Error> {
-    let reader = Reader::from_str(xml);
-    todo!()
-}
+// TODO
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct Expression<'a>(std::marker::PhantomData<&'a ()>);

@@ -12,4 +12,3 @@ fn parse_video_xml() {
     let xml = fs::read_to_string("Vulkan-Docs/xml/video.xml").unwrap();
     let _registry = parse(&xml).unwrap();
 }
-
