@@ -42,6 +42,22 @@ pub enum TypeSpecifier<'a> {
     Identifier(TypeIdentifier<'a>),
 }
 
+impl<'a> TypeSpecifier<'a> {
+    fn from_plain(ident: Cow<'a, str>, is_struct: bool) -> Self {
+        match &*ident {
+            "void" => TypeSpecifier::Void,
+            "char" => TypeSpecifier::Char,
+            "short" => TypeSpecifier::Short,
+            "int" => TypeSpecifier::Int,
+            "long" => TypeSpecifier::Long,
+            "float" => TypeSpecifier::Float,
+            "double" => TypeSpecifier::Double,
+            _ if is_struct => TypeSpecifier::Identifier(TypeIdentifier::Struct(ident)),
+            _ => TypeSpecifier::Identifier(TypeIdentifier::Plain(ident)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 
 pub enum Type<'a> {
@@ -537,12 +553,9 @@ peg::parser! {
         rule typed_tag(name_text: rule<Cow<'a, str>>) -> FieldLike<'a>
             = is_const:"const"? is_struct:"struct"? type_name:type_tag() pointer_kind:pointer_kind()? name:name_text() {
                 FieldLike {
-                    type_name,
                     pointer_kind,
                     is_const: is_const.is_some(),
-                    is_struct: is_struct.is_some(),
-                    name,
-                    ..FieldLike::default()
+                    ..FieldLike::default_new(name, TypeSpecifier::from_plain(type_name, is_struct.is_some()))
                 }
             }
 
@@ -622,6 +635,6 @@ peg::parser! {
           = "typedef" ty_name:type_specifier() ptr:"*"? "(" vkapi_ptr_macro() "*" name:name_tag() ")" "(" params:(
             "void" ")" ";" { Vec::new() }
             / params:(typed_tag(<identifier()>) ** ",") ")" ";" { params }
-          ) { FnPtrType { name_and_return: FieldLike { name, type_name: ty_name.to_string().into(), pointer_kind: ptr.map(|()| PointerKind::Single), ..FieldLike::default() }, params: params.into_boxed_slice(), requires: requires_attr.map(Cow::Borrowed) } }
+          ) { FnPtrType { name_and_return: FieldLike { pointer_kind: ptr.map(|()| PointerKind::Single), ..FieldLike::default_new(name, ty_name) }, params: params.into_boxed_slice(), requires: requires_attr.map(Cow::Borrowed) } }
   }
 }

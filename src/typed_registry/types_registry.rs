@@ -3,7 +3,7 @@ use std::{
     num::{NonZeroU32, NonZeroU8},
 };
 
-use crate::{Expression, Token};
+use crate::{Expression, Token, TypeSpecifier};
 
 use super::common::*;
 
@@ -60,11 +60,11 @@ pub enum NoAutoValidityKind {
     Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldLike<'a> {
     pub name: Cow<'a, str>,
-    pub type_name: Cow<'a, str>,
-    pub is_struct: bool,
+    pub type_name: TypeSpecifier<'a>,
+    /// if true, then either a const pointer or array
     pub is_const: bool,
     pub pointer_kind: Option<PointerKind>,
     pub bitfield_size: Option<NonZeroU8>,
@@ -77,6 +77,25 @@ pub struct FieldLike<'a> {
     /// => This field-like is a generic vulkan handle, and it is an error if `type_name` isn't `uint64_t`
     pub object_type: Option<Cow<'a, str>>,
     pub comment: Option<Cow<'a, str>>,
+}
+
+impl<'a> FieldLike<'a> {
+    pub fn default_new(name: Cow<'a, str>, type_name: TypeSpecifier<'a>) -> Self {
+        Self {
+            name,
+            type_name,
+            is_const: false,
+            pointer_kind: None,
+            bitfield_size: None,
+            array_shape: None,
+            dynamic_shape: None,
+            extern_sync: None,
+            optional: None,
+            no_auto_validity: None,
+            object_type: None,
+            comment: None,
+        }
+    }
 }
 
 /// <type>
