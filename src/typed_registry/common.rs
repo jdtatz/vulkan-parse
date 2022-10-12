@@ -3,6 +3,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use roxmltree::Node;
+
+use crate::{Parse, ParseElements, ParseResult};
+
 #[derive(Debug, Clone)]
 pub struct Comment<'a>(pub Cow<'a, str>);
 
@@ -22,16 +26,18 @@ impl<'a, T> MaybeComment<'a, T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CommentendChildren<'a, T>(pub Vec<MaybeComment<'a, T>>);
+pub struct CommentendChildren<'a, T>(pub Box<[MaybeComment<'a, T>]>);
 
 impl<'a, T: 'a> CommentendChildren<'a, T> {
     pub fn into_values(self) -> impl 'a + Iterator<Item = T> {
-        self.0.into_iter().filter_map(MaybeComment::try_into_value)
+        Vec::from(self.0)
+            .into_iter()
+            .filter_map(MaybeComment::try_into_value)
     }
 }
 
 impl<'a, T> Deref for CommentendChildren<'a, T> {
-    type Target = Vec<MaybeComment<'a, T>>;
+    type Target = Box<[MaybeComment<'a, T>]>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -41,6 +47,12 @@ impl<'a, T> Deref for CommentendChildren<'a, T> {
 impl<'a, T> DerefMut for CommentendChildren<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> {
+    fn from_iter<I: IntoIterator<Item = MaybeComment<'a, T>>>(iter: I) -> Self {
+        CommentendChildren(iter.into_iter().collect())
     }
 }
 
@@ -58,4 +70,36 @@ pub struct SemVarVersion {
     pub major: u32,
     pub minor: u32,
     pub patch: Option<u32>,
+}
+
+impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if let Some(v) = T::try_parse(node)? {
+            Ok(Some(MaybeComment::Value(v)))
+        } else {
+            Ok(Comment::try_parse(node)?.map(MaybeComment::Comment))
+        }
+    }
+}
+
+impl<'a, 'input: 'a, T: 'a + Parse<'a, 'input>> ParseElements<'a, 'input>
+    for CommentendChildren<'a, T>
+{
+    type Item = MaybeComment<'a, T>;
+
+    type NodeIter = roxmltree::Children<'a, 'input>;
+
+    fn get_nodes(node: Node<'a, 'input>) -> ParseResult<Option<Self::NodeIter>> {
+        Ok(Some(node.children()))
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if node.has_tag_name("comment") {
+            Ok(Some(Comment(Cow::Borrowed(node.text().unwrap_or("")))))
+        } else {
+            Ok(None)
+        }
+    }
 }

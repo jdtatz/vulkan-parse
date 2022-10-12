@@ -8,7 +8,8 @@ use std::{
 use logos::Lexer;
 
 use crate::{
-    ArrayLength, Constant, DefineType, DefineTypeValue, FieldLike, FnPtrType, PointerKind, Token,
+    ArrayLength, Constant, DefineType, DefineTypeValue, FieldLike, FnPtrType, KeepNewLines,
+    PointerKind, Token,
 };
 // Using the C grammer from https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1124.pdf
 
@@ -60,18 +61,18 @@ impl<'a> TypeSpecifier<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 
-pub enum Type<'a> {
+pub enum TypeName<'a> {
     Specifier(TypeSpecifier<'a>),
     Pointer {
-        pointee_ty: Box<Type<'a>>,
+        pointee_ty: Box<TypeName<'a>>,
     },
-    Array(Box<Type<'a>>, Option<NonZeroU32>),
+    Array(Box<TypeName<'a>>, Option<NonZeroU32>),
     Function {
-        return_ty: Box<Type<'a>>,
+        return_ty: Box<TypeName<'a>>,
         name: Cow<'a, str>,
-        arg_tys: Box<[Type<'a>]>,
+        arg_tys: Box<[TypeName<'a>]>,
     },
-    Qualified(TypeQualifer, Box<Type<'a>>),
+    Qualified(TypeQualifer, Box<TypeName<'a>>),
 }
 
 enum TypeSpecifierOrQual<'a> {
@@ -109,7 +110,7 @@ pub enum UnaryOp<'a> {
     LogicalNegation,
     Increment(FixOrder),
     Decrement(FixOrder),
-    Cast(Type<'a>),
+    Cast(TypeName<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,7 +142,7 @@ pub enum Expression<'a> {
     Identifier(Cow<'a, str>),
     Constant(Constant),
     Literal(Cow<'a, str>),
-    SizeOf(Type<'a>),
+    SizeOf(TypeName<'a>),
     Unary(UnaryOp<'a>, Box<Expression<'a>>),
     Binary(BinaryOp, Box<Expression<'a>>, Box<Expression<'a>>),
     Comparision(ComparisionOp, Box<Expression<'a>>, Box<Expression<'a>>),
@@ -235,7 +236,7 @@ impl fmt::Display for TypeSpecifier<'_> {
     }
 }
 
-impl fmt::Display for Type<'_> {
+impl fmt::Display for TypeName<'_> {
     fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!()
     }
@@ -362,16 +363,47 @@ impl<'s, 'a> Deref for VkXMLTokens<'s, 'a> {
     }
 }
 
-impl<'a> FromIterator<VkXMLToken<'a>> for VkXMLTokens<'static, 'a> {
+impl<'s, 'a: 's> FromIterator<VkXMLToken<'a>> for VkXMLTokens<'s, 'a> {
     fn from_iter<T: IntoIterator<Item = VkXMLToken<'a>>>(iter: T) -> Self {
         VkXMLTokens(Cow::Owned(iter.into_iter().collect()))
     }
 }
 
-impl<'a> From<Lexer<'a, Token<'a>>> for VkXMLTokens<'static, 'a> {
+impl<'s, 'a: 's> From<Lexer<'a, Token<'a>>> for VkXMLTokens<'s, 'a> {
     fn from(lex: Lexer<'a, Token<'a>>) -> Self {
         lex.into_iter().map(VkXMLToken::C).collect()
     }
+}
+
+pub(crate) fn vk_tokenize<'s, 'a: 's, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+    parsing_macros: bool,
+) -> VkXMLTokens<'s, 'a> {
+    node.children()
+        .filter(|n| n.is_element() || n.is_text())
+        .flat_map(|n| {
+            let text = n
+                .text()
+                .expect("Empty elements are disallowed in vulkan's mixed pseudo-c/xml");
+            // let text = n.text().unwrap_or("");
+            if n.is_element() {
+                vec![VkXMLToken::TextTag {
+                    name: Cow::Borrowed(n.tag_name().name()),
+                    text: Cow::Borrowed(n.text().unwrap()),
+                }]
+            } else {
+                let extras = if parsing_macros {
+                    Some(KeepNewLines)
+                } else {
+                    None
+                };
+                Lexer::with_extras(text, extras)
+                    .into_iter()
+                    .map(VkXMLToken::C)
+                    .collect()
+            }
+        })
+        .collect()
 }
 
 impl<'s, 'a> peg::Parse for VkXMLTokens<'s, 'a> {
@@ -451,8 +483,8 @@ peg::parser! {
           / "float" { TypeSpecifier::Float }
           / "double" { TypeSpecifier::Double }
 
-        pub rule type_name() -> Type<'a>
-          = ty:type_specifier() { Type::Specifier(ty) }
+        pub rule type_name() -> TypeName<'a>
+          = ty:type_specifier() { TypeName::Specifier(ty) }
 
 
         // C-expr rules
