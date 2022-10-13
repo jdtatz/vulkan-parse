@@ -264,7 +264,10 @@ pub enum Token<'a> {
     #[regex("0(?&octal)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[1..].trim_end_matches(IS), 8).map(Constant::Integer))]
     #[regex("0[xX](?&hex)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[2..].trim_end_matches(IS), 16).map(Constant::Integer))]
     #[regex(r"L?'(\\.|[^\\'])+'", |lex| Constant::from_c_char(lex))]
-    #[regex(r#"[+-]?((\d\.\d?(?&exp)?[fFdD]?)|(\.\d(?&exp)?[fFdD]?)|(\d(?&exp)[fFdD]?)|(\d(?&exp)?[fFdD]))"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
+    #[regex(r#"[0-9]+\.[0-9]*(?&exp)?(?&float_suffix)?"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
+    #[regex(r#"\.[0-9]+(?&exp)?(?&float_suffix)?"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
+    #[regex(r#"[0-9]+(?&exp)(?&float_suffix)?"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
+    #[regex(r#"[0-9]+(?&exp)?[fF]"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
     Constant(Constant),
     // &quot;
     #[regex(r#"L?"([^"\\]|\\t|\\u|\\n|\\")*""#, |lex| fix_literal(lex.slice()))]
@@ -575,5 +578,17 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Define => write!(f, "#define"),
         }?;
         write!(f, " ")
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_float_constants() {
+        let tokens = Token::lexer("1000.0F").into_iter().collect::<Vec<_>>();
+        assert_eq!(tokens, &[Token::Constant(Constant::Float(1000.0))])
     }
 }
