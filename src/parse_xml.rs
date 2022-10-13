@@ -151,6 +151,44 @@ impl<'a, 'input: 'a, V: ParseElements<'a, 'input>> Parse<'a, 'input> for V {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Terminated<V, T>(pub V, pub Option<T>);
+
+impl<'a, 'input: 'a, V: ParseElements<'a, 'input>, T: Parse<'a, 'input>> Parse<'a, 'input>
+    for Terminated<V, T>
+where
+    <V as ParseElements<'a, 'input>>::NodeIter: DoubleEndedIterator,
+{
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        todo!()
+    }
+
+    fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
+        if let Some(nodes) = V::get_nodes(node)? {
+            let mut it = nodes.filter(Node::is_element);
+            if let Some(last) = it.next_back() {
+                if let Some(t) = T::try_parse(last)? {
+                    Ok(Terminated(
+                        it.map(V::Item::parse).collect::<ParseResult<V>>()?,
+                        Some(t),
+                    ))
+                } else {
+                    Ok(Terminated(
+                        it.chain(std::iter::once(last))
+                            .map(V::Item::parse)
+                            .collect::<ParseResult<V>>()?,
+                        None,
+                    ))
+                }
+            } else {
+                Ok(Self(V::from_iter(std::iter::empty()), None))
+            }
+        } else {
+            Err(ErrorKind::NoMatch(node.id()))
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct XMLDocument<'input>(Document<'input>);
 

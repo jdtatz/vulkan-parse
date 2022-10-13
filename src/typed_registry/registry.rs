@@ -85,7 +85,7 @@ impl<'a, 'input> Parse<'a, 'input> for RegistryChild<'a> {
                 CommentendChildren::parse(node)?,
                 node.attribute("comment").map(Cow::Borrowed).map(Comment),
             ))),
-            "enums" => todo!(),
+            "enums" => Ok(Some(RegistryChild::Enums(Parse::parse(node)?))),
             "commands" => todo!(),
             "features" => todo!(),
             "extensions" => todo!(),
