@@ -86,8 +86,11 @@ impl<'a, 'input> Parse<'a, 'input> for RegistryChild<'a> {
                 node.attribute("comment").map(Cow::Borrowed).map(Comment),
             ))),
             "enums" => Ok(Some(RegistryChild::Enums(Parse::parse(node)?))),
-            "commands" => todo!(),
-            "features" => todo!(),
+            "commands" => Ok(Some(RegistryChild::Commands(
+                Parse::parse(node)?,
+                node.attribute("comment").map(Cow::Borrowed).map(Comment),
+            ))),
+            "feature" => todo!(),
             "extensions" => todo!(),
             "formats" => todo!(),
             "spirvextensions" => todo!(),

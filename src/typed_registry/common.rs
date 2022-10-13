@@ -5,7 +5,7 @@ use std::{
 
 use roxmltree::Node;
 
-use crate::{Parse, ParseElements, ParseResult, get_req_attr};
+use crate::{get_req_attr, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone)]
 pub struct Comment<'a>(pub Cow<'a, str>);
@@ -108,7 +108,7 @@ impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
 impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for DefinitionOrAlias<'a, T> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(alias) = node.attribute("alias") {
-            Ok(Some(DefinitionOrAlias::Alias { 
+            Ok(Some(DefinitionOrAlias::Alias {
                 name: get_req_attr(node, "name").map(Cow::Borrowed)?,
                 alias: Cow::Borrowed(alias),
                 comment: node.attribute("comment").map(Cow::Borrowed),

@@ -1,13 +1,14 @@
 use std::{
     borrow::Cow,
-    num::{NonZeroU32, NonZeroU8}, str::FromStr,
+    num::{NonZeroU32, NonZeroU8},
+    str::FromStr,
 };
 
 use roxmltree::Node;
 
 use crate::{
-    c_with_vk_ext, get_req_attr, get_req_text, vk_tokenize, Expression, Parse, ParseResult, Token,
-    TypeSpecifier, ErrorKind, parse_cexpr,
+    c_with_vk_ext, get_req_attr, get_req_text, parse_cexpr, vk_tokenize, ErrorKind, Expression,
+    Parse, ParseResult, Token, TypeSpecifier,
 };
 
 use super::common::*;
@@ -64,7 +65,6 @@ impl FromStr for OptionalKind {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
@@ -86,7 +86,6 @@ impl<'a> ExternSyncKind<'a> {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
@@ -106,7 +105,6 @@ impl FromStr for NoAutoValidityKind {
         }
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldLike<'a> {
@@ -252,7 +250,10 @@ impl FromStr for HandleKind {
             "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => Ok(HandleKind::NoDispatch),
             "VK_DEFINE_HANDLE" => Ok(HandleKind::Dispatch),
             #[cfg(debug_assertions)]
-            s => todo!("Unexpected <type category=\"handle\"><type>...</type> of {:?}", s),
+            s => todo!(
+                "Unexpected <type category=\"handle\"><type>...</type> of {:?}",
+                s
+            ),
             #[cfg(not(debug_assertions))]
             _ => Err(()),
         }
@@ -355,7 +356,6 @@ impl FromStr for MemberLimitType {
     }
 }
 
-
 /// <member>
 #[derive(Debug, Clone)]
 pub struct Member<'a> {
@@ -444,7 +444,10 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
             "VkFlags" => false,
             "VkFlags64" => true,
             #[cfg(debug_assertions)]
-            s => todo!("Unexpected <type category=\"bitmask\"><type>...</type> of {:?}", s),
+            s => todo!(
+                "Unexpected <type category=\"bitmask\"><type>...</type> of {:?}",
+                s
+            ),
             #[cfg(not(debug_assertions))]
             _ => return Ok(None),
         };
@@ -502,7 +505,9 @@ impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
             struct_extends: node
                 .attribute("structextends")
                 .map(|es| es.split(',').map(Cow::Borrowed).collect()),
-            allow_duplicate: node.attribute("allowduplicate").and_then(|v| v.parse().ok()),
+            allow_duplicate: node
+                .attribute("allowduplicate")
+                .and_then(|v| v.parse().ok()),
             members: Parse::parse(node)?,
         }))
     }
@@ -582,9 +587,13 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
         }).transpose().map_err(|e| ErrorKind::MixedParseError(e, node.id()))?;
         Ok(Some(FieldLike {
             dynamic_shape,
-            extern_sync: node.attribute("externsync").map(|v| ExternSyncKind::from_str(v)),
+            extern_sync: node
+                .attribute("externsync")
+                .map(|v| ExternSyncKind::from_str(v)),
             optional: node.attribute("optional").and_then(|v| v.parse().ok()),
-            no_auto_validity: node.attribute("noautovalidity").and_then(|v| v.parse().ok()),
+            no_auto_validity: node
+                .attribute("noautovalidity")
+                .and_then(|v| v.parse().ok()),
             object_type: node.attribute("objecttype").map(Cow::Borrowed),
             ..f
         }))

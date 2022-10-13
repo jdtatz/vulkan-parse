@@ -581,7 +581,6 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
