@@ -1,13 +1,14 @@
 use std::{
     borrow::Cow,
-    num::{NonZeroU32, NonZeroU8},
+    num::{NonZeroU32, NonZeroU8}, str::FromStr,
 };
 
+use logos::Logos;
 use roxmltree::Node;
 
 use crate::{
     c_with_vk_ext, get_req_attr, get_req_text, vk_tokenize, Expression, Parse, ParseResult, Token,
-    TypeSpecifier,
+    TypeSpecifier, ErrorKind,
 };
 
 use super::common::*;
@@ -52,6 +53,19 @@ pub enum OptionalKind {
     Double(bool, bool),
 }
 
+impl FromStr for OptionalKind {
+    type Err = <bool as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((a, b)) = s.split_once(',') {
+            Ok(Self::Double(a.parse()?, b.parse()?))
+        } else {
+            s.parse().map(Self::Single)
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
@@ -59,11 +73,41 @@ pub enum ExternSyncKind<'a> {
     Fields(Box<[Cow<'a, str>]>),
 }
 
+impl<'a> ExternSyncKind<'a> {
+    fn from_str(s: &'a str) -> Self {
+        match s {
+            "true" => Self::Value,
+            // FIXME split into 
+            s => Self::Fields(s.split(',').map(Cow::Borrowed).collect())
+            // #[cfg(debug_assertions)]
+            // s => todo!("Unexpected <[field-like] externsync=...> of {:?}", s),
+            // #[cfg(not(debug_assertions))]
+            // _ => Err(()),
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
     Value,
 }
+
+impl FromStr for NoAutoValidityKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "true" => Ok(Self::Value),
+            #[cfg(debug_assertions)]
+            s => todo!("Unexpected <[field-like] noautovalidity=...> of {:?}", s),
+            #[cfg(not(debug_assertions))]
+            _ => Err(()),
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldLike<'a> {
@@ -201,6 +245,21 @@ pub enum HandleKind {
     NoDispatch,
 }
 
+impl FromStr for HandleKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => Ok(HandleKind::NoDispatch),
+            "VK_DEFINE_HANDLE" => Ok(HandleKind::Dispatch),
+            #[cfg(debug_assertions)]
+            s => todo!("Unexpected <type category=\"handle\"><type>...</type> of {:?}", s),
+            #[cfg(not(debug_assertions))]
+            _ => Err(()),
+        }
+    }
+}
+
 /// <type category="enum">
 #[derive(Debug, Clone)]
 pub struct EnumType<'a> {
@@ -221,7 +280,7 @@ pub struct StructType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
     pub returned_only: Option<bool>,
-    pub struct_extends: Box<[Cow<'a, str>]>,
+    pub struct_extends: Option<Box<[Cow<'a, str>]>>,
     pub allow_duplicate: Option<bool>,
 }
 
@@ -241,6 +300,22 @@ pub enum MemberSelector {
     GeometryType,
 }
 
+impl FromStr for MemberSelector {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "type" => Ok(Self::Type),
+            "format" => Ok(Self::Format),
+            "geometryType" => Ok(Self::GeometryType),
+            #[cfg(debug_assertions)]
+            s => todo!("Unexpected <member selector=...> of {:?}", s),
+            #[cfg(not(debug_assertions))]
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MemberLimitType {
@@ -256,6 +331,31 @@ pub enum MemberLimitType {
     MaxPot,
     MinMul,
 }
+
+impl FromStr for MemberLimitType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "min" => Ok(Self::Min),
+            "max" => Ok(Self::Max),
+            "exact" => Ok(Self::Exact),
+            "bits" => Ok(Self::Bits),
+            "bitmask" => Ok(Self::Bitmask),
+            "range" => Ok(Self::Range),
+            "struct" => Ok(Self::Struct),
+            "noauto" => Ok(Self::NoAuto),
+            "min,pot" => Ok(Self::MinPot),
+            "max,pot" => Ok(Self::MaxPot),
+            "min,mul" => Ok(Self::MinMul),
+            #[cfg(debug_assertions)]
+            s => todo!("Unexpected <member limittype=...> of {:?}", s),
+            #[cfg(not(debug_assertions))]
+            _ => Err(()),
+        }
+    }
+}
+
 
 /// <member>
 #[derive(Debug, Clone)]
@@ -312,7 +412,7 @@ impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         let tokens = vk_tokenize(node, true);
-        c_with_vk_ext::type_define(&tokens, node.attribute("name"), node.attribute("require"))
+        c_with_vk_ext::type_define(&tokens, node.attribute("name"), node.attribute("requires"))
             .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
             .map(Some)
     }
@@ -335,38 +435,160 @@ impl<'a, 'input> Parse<'a, 'input> for BaseTypeType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for DefinitionOrAlias<'a, BitmaskType<'a>> {
+impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
+        let ty_name = get_req_text(
+            node.first_element_child()
+                .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?,
+        )?;
+        let is_64bits = match ty_name.trim() {
+            "VkFlags" => false,
+            "VkFlags64" => true,
+            #[cfg(debug_assertions)]
+            s => todo!("Unexpected <type category=\"bitmask\"><type>...</type> of {:?}", s),
+            #[cfg(not(debug_assertions))]
+            _ => return Ok(None),
+        };
+        Ok(Some(BitmaskType {
+            name: Cow::Borrowed(get_req_text(
+                node.last_element_child()
+                    .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
+            )?),
+            is_64bits,
+            has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
+        }))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for DefinitionOrAlias<'a, HandleType<'a>> {
+impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
+        let ty_name = get_req_text(
+            node.first_element_child()
+                .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?,
+        )?;
+        Ok(Some(HandleType {
+            name: Cow::Borrowed(get_req_text(
+                node.last_element_child()
+                    .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
+            )?),
+            handle_kind: ty_name.parse::<HandleKind>().unwrap(),
+            obj_type_enum: get_req_attr(node, "objtypeenum").map(Cow::Borrowed)?,
+            parent: node.attribute("parent").map(Cow::Borrowed),
+        }))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for EnumType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
+        Ok(Some(EnumType {
+            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+        }))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
+        let tokens = vk_tokenize(node, false);
+        c_with_vk_ext::type_funcptr(&tokens, node.attribute("requires"))
+            .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
+            .map(Some)
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for DefinitionOrAlias<'a, StructType<'a>> {
+impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
+        Ok(Some(StructType {
+            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+            returned_only: node.attribute("returnedonly").and_then(|v| v.parse().ok()),
+            struct_extends: node
+                .attribute("structextends")
+                .map(|es| es.split(',').map(Cow::Borrowed).collect()),
+            allow_duplicate: node.attribute("allowduplicate").and_then(|v| v.parse().ok()),
+            members: Parse::parse(node)?,
+        }))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for UnionType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
+        Ok(Some(UnionType {
+            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+            returned_only: node.attribute("returnedonly").and_then(|v| v.parse().ok()),
+            members: Parse::parse(node)?,
+        }))
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for Member<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if node.has_tag_name("member") {
+            Ok(Some(Member {
+                base: Parse::parse(node)?,
+                selector: node.attribute("selector").and_then(|v| v.parse().ok()),
+                selection: node.attribute("selection").map(Cow::Borrowed),
+                values: node.attribute("values").map(Cow::Borrowed),
+                limit_type: node.attribute("limittype").and_then(|v| v.parse().ok()),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        let tokens = vk_tokenize(node, false);
+        let f = c_with_vk_ext::field_like(&tokens)
+            .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))?;
+        let dynamic_shape = node.attribute("len").and_then(|len| {
+            if let Some(latex_expr) = len.strip_prefix("latexmath:") {
+                let c_expr = node.attribute("altlen").expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
+                let c_toks = Token::lexer(c_expr).into();
+                Some(c_with_vk_ext::expr(&c_toks).map(|c_expr| DynamicShapeKind::Expression {
+                    latex_expr: Cow::Borrowed(latex_expr),
+                    c_expr,
+                }))
+            } else {
+                let mut it = len.split(',').map(|v| {
+                    if v == "null-terminated" {
+                        DynamicLength::NullTerminated
+                    } else if let Ok(n) = v.parse() {
+                        DynamicLength::Static(n)
+                    } else if let Some((parameter, field)) = v.split_once("->").or_else(|| v.split_once("-&gt;")) {
+                        DynamicLength::ParameterizedField {
+                            parameter: Cow::Borrowed(parameter),
+                            field: Cow::Borrowed(field),
+                        }
+                    } else {
+                        DynamicLength::Parameterized(Cow::Borrowed(v))
+                    }
+                });
+                let outer = it.next().expect("The `len` attribute must not be empty");
+                Some(Ok(match it.next() {
+                    Some(inner) => {
+                        let n = it.count();
+                        if n != 0 {
+                            #[cfg(debug_assertions)]
+                            todo!(
+                                "Expected only 1 or 2 comma-seperated values in the `len` attribute, found {} values",
+                                2 + n
+                            );
+                            #[cfg(not(debug_assertions))]
+                            return None;
+                        }
+                        DynamicShapeKind::Double(outer, inner)
+                    }
+                    None => DynamicShapeKind::Single(outer),
+                }))
+            }
+        }).transpose().map_err(|e| ErrorKind::MixedParseError(e, node.id()))?;
+        Ok(Some(FieldLike {
+            dynamic_shape,
+            extern_sync: node.attribute("externsync").map(|v| ExternSyncKind::from_str(v)),
+            optional: node.attribute("optional").and_then(|v| v.parse().ok()),
+            no_auto_validity: node.attribute("noautovalidity").and_then(|v| v.parse().ok()),
+            object_type: node.attribute("objecttype").map(Cow::Borrowed),
+            ..f
+        }))
     }
 }

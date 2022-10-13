@@ -5,7 +5,7 @@ use std::{
 
 use roxmltree::Node;
 
-use crate::{Parse, ParseElements, ParseResult};
+use crate::{Parse, ParseElements, ParseResult, get_req_attr};
 
 #[derive(Debug, Clone)]
 pub struct Comment<'a>(pub Cow<'a, str>);
@@ -61,6 +61,7 @@ pub enum DefinitionOrAlias<'a, T> {
     Alias {
         name: Cow<'a, str>,
         alias: Cow<'a, str>,
+        comment: Option<Cow<'a, str>>,
     },
     Definition(T),
 }
@@ -100,6 +101,20 @@ impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
             Ok(Some(Comment(Cow::Borrowed(node.text().unwrap_or("")))))
         } else {
             Ok(None)
+        }
+    }
+}
+
+impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for DefinitionOrAlias<'a, T> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if let Some(alias) = node.attribute("alias") {
+            Ok(Some(DefinitionOrAlias::Alias { 
+                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+                alias: Cow::Borrowed(alias),
+                comment: node.attribute("comment").map(Cow::Borrowed),
+            }))
+        } else {
+            Ok(T::try_parse(node)?.map(DefinitionOrAlias::Definition))
         }
     }
 }
