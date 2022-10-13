@@ -3,12 +3,11 @@ use std::{
     num::{NonZeroU32, NonZeroU8}, str::FromStr,
 };
 
-use logos::Logos;
 use roxmltree::Node;
 
 use crate::{
     c_with_vk_ext, get_req_attr, get_req_text, vk_tokenize, Expression, Parse, ParseResult, Token,
-    TypeSpecifier, ErrorKind,
+    TypeSpecifier, ErrorKind, parse_cexpr,
 };
 
 use super::common::*;
@@ -543,8 +542,7 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
         let dynamic_shape = node.attribute("len").and_then(|len| {
             if let Some(latex_expr) = len.strip_prefix("latexmath:") {
                 let c_expr = node.attribute("altlen").expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
-                let c_toks = Token::lexer(c_expr).into();
-                Some(c_with_vk_ext::expr(&c_toks).map(|c_expr| DynamicShapeKind::Expression {
+                Some(parse_cexpr(c_expr).map(|c_expr| DynamicShapeKind::Expression {
                     latex_expr: Cow::Borrowed(latex_expr),
                     c_expr,
                 }))

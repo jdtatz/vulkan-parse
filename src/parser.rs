@@ -5,7 +5,7 @@ use std::{
     ops::Deref,
 };
 
-use logos::Lexer;
+use logos::{Lexer, Logos};
 
 use crate::{
     ArrayLength, Constant, DefineType, DefineTypeValue, FieldLike, FnPtrType, KeepNewLines,
@@ -669,4 +669,9 @@ peg::parser! {
             / params:(typed_tag(<identifier()>) ** ",") ")" ";" { params }
           ) { FnPtrType { name_and_return: FieldLike { pointer_kind: ptr.map(|()| PointerKind::Single), ..FieldLike::default_new(name, ty_name) }, params: params.into_boxed_slice(), requires: requires_attr.map(Cow::Borrowed) } }
   }
+}
+
+pub(crate) fn parse_cexpr(cexpr: &str) -> Result<Expression, peg::error::ParseError<usize>> {
+    let c_toks = Token::lexer(cexpr).into();
+    c_with_vk_ext::expr(&c_toks)
 }
