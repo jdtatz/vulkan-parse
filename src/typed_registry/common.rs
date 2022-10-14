@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     ops::{Deref, DerefMut},
+    str::FromStr,
 };
 
 use roxmltree::Node;
@@ -71,6 +72,34 @@ pub struct SemVarVersion {
     pub major: u32,
     pub minor: u32,
     pub patch: Option<u32>,
+}
+
+impl FromStr for SemVarVersion {
+    type Err = <u32 as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((major_s, s)) = s.split_once('.') {
+            if let Some((minor_s, patch_s)) = s.split_once('.') {
+                Ok(Self {
+                    major: major_s.parse()?,
+                    minor: minor_s.parse()?,
+                    patch: Some(patch_s.parse()?),
+                })
+            } else {
+                Ok(Self {
+                    major: major_s.parse()?,
+                    minor: s.parse()?,
+                    patch: None,
+                })
+            }
+        } else {
+            Ok(Self {
+                major: s.parse()?,
+                minor: 0,
+                patch: None,
+            })
+        }
+    }
 }
 
 impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T> {

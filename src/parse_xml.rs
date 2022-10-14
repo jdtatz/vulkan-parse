@@ -122,6 +122,26 @@ pub(crate) trait Parse<'a, 'input>: Sized {
     }
 }
 
+impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for Option<T> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        match T::try_parse(node) {
+            Ok(Some(v)) => Ok(Some(Some(v))),
+            // TODO: which version do I want?
+            // Ok(None) => Ok(Some(None)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
+        match T::try_parse(node) {
+            Ok(Some(v)) => Ok(Some(v)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 pub(crate) trait ParseElements<'a, 'input: 'a>: Sized + FromIterator<Self::Item> {
     type Item: Parse<'a, 'input>;
     type NodeIter: Iterator<Item = Node<'a, 'input>>;

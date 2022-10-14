@@ -90,7 +90,7 @@ impl<'a, 'input> Parse<'a, 'input> for RegistryChild<'a> {
                 Parse::parse(node)?,
                 node.attribute("comment").map(Cow::Borrowed).map(Comment),
             ))),
-            "feature" => todo!(),
+            "feature" => Ok(Some(RegistryChild::Features(Parse::parse(node)?))),
             "extensions" => todo!(),
             "formats" => todo!(),
             "spirvextensions" => todo!(),
