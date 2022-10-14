@@ -81,7 +81,9 @@ pub enum RequireValueEnum<'a> {
     Value(Expression<'a>),
     Alias(Cow<'a, str>),
     Offset {
-        extnumber: u32,
+        // Required for <feature><require>, but optional in <extension><require>
+        // extnumber: u32,
+        extnumber: Option<u32>,
         offset: u32,
         direction: Option<OffsetDirection>,
     },
@@ -148,7 +150,8 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValueEnum<'a> {
             Ok(Some(RequireValueEnum::Alias(Cow::Borrowed(alias))))
         } else if let Some(offset) = node.attribute("offset") {
             Ok(Some(RequireValueEnum::Offset {
-                extnumber: get_req_attr(node, "extnumber")?.parse().unwrap(),
+                // extnumber: get_req_attr(node, "extnumber")?.parse().unwrap(),
+                extnumber: node.attribute("extnumber").and_then(|v| v.parse().ok()),
                 offset: offset.parse().unwrap(),
                 direction: node.attribute("dir").and_then(|v| v.parse().ok()),
             }))
