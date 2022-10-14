@@ -95,9 +95,15 @@ impl<'a, 'input> Parse<'a, 'input> for RegistryChild<'a> {
                 Parse::parse(node)?,
                 node.attribute("comment").map(Cow::Borrowed).map(Comment),
             ))),
-            "formats" => todo!(),
-            "spirvextensions" => todo!(),
-            "spirvcapabilities" => todo!(),
+            "formats" => Ok(Some(RegistryChild::Formats(Parse::parse(node)?))),
+            "spirvextensions" => Ok(Some(RegistryChild::SpirvExtensions(
+                Parse::parse(node)?,
+                node.attribute("comment").map(Cow::Borrowed).map(Comment),
+            ))),
+            "spirvcapabilities" => Ok(Some(RegistryChild::SpirvCapabilities(
+                Parse::parse(node)?,
+                node.attribute("comment").map(Cow::Borrowed).map(Comment),
+            ))),
             _ => Ok(None),
         }
     }

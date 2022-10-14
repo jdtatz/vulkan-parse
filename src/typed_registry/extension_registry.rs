@@ -59,13 +59,8 @@ pub enum ExtensionPromotion<'a> {
 
 impl<'a> ExtensionPromotion<'a> {
     pub fn from_str(s: &'a str) -> Self {
-        if let Some(ver) = s.strip_prefix("VK_VERSION_") {
-            let (major, minor) = ver.split_once('_').unwrap();
-            Self::Core(SemVarVersion {
-                major: major.parse().unwrap(),
-                minor: minor.parse().unwrap(),
-                patch: None,
-            })
+        if let Some(ver) = SemVarVersion::from_std_str(s) {
+            Self::Core(ver)
         } else {
             Self::Extension(Cow::Borrowed(s))
         }

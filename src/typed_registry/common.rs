@@ -102,6 +102,21 @@ impl FromStr for SemVarVersion {
     }
 }
 
+impl SemVarVersion {
+    pub fn from_std_str(s: &str) -> Option<Self> {
+        s.strip_prefix("VK_VERSION_")
+            .or_else(|| s.strip_prefix("VK_API_VERSION_"))
+            .map(|ver| {
+                let (major, minor) = ver.split_once('_').unwrap();
+                SemVarVersion {
+                    major: major.parse().unwrap(),
+                    minor: minor.parse().unwrap(),
+                    patch: None,
+                }
+            })
+    }
+}
+
 impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(v) = T::try_parse(node)? {
