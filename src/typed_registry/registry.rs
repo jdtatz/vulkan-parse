@@ -30,7 +30,7 @@ pub enum RegistryChild<'a> {
         Option<Comment<'a>>,
     ),
     Features(Feature<'a>),
-    Extensions(Box<[Extension<'a>]>, Option<Comment<'a>>),
+    Extensions(Box<[WrappedExtension<'a>]>, Option<Comment<'a>>),
     Formats(Box<[Format<'a>]>),
     SpirvExtensions(Box<[SpirvExtension<'a>]>, Option<Comment<'a>>),
     SpirvCapabilities(Box<[SpirvCapability<'a>]>, Option<Comment<'a>>),
@@ -48,6 +48,12 @@ pub struct Tag<'a> {
     pub name: Cow<'a, str>,
     pub author: Cow<'a, str>,
     pub contact: Cow<'a, str>,
+}
+
+#[derive(Debug)]
+pub enum WrappedExtension<'a> {
+    Extension(Extension<'a>),
+    PseudoExtension(PseudoExtension<'a>),
 }
 
 impl<'a> FromIterator<MaybeComment<'a, RegistryChild<'a>>> for Registry<'a> {
@@ -131,6 +137,18 @@ impl<'a, 'input> Parse<'a, 'input> for Tag<'a> {
                 author: Cow::Borrowed(get_req_attr(node, "author")?),
                 contact: Cow::Borrowed(get_req_attr(node, "contact")?),
             }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for WrappedExtension<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if let Some(e) = Extension::try_parse(node)? {
+            Ok(Some(Self::Extension(e)))
+        } else if let Some(e) = PseudoExtension::try_parse(node)? {
+            Ok(Some(Self::PseudoExtension(e)))
         } else {
             Ok(None)
         }

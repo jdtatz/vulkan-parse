@@ -86,23 +86,50 @@ pub struct Extension<'a> {
     pub requires: Box<[Require<'a>]>,
 }
 
+#[derive(Debug)]
+pub struct PseudoExtension<'a> {
+    pub name: Cow<'a, str>,
+    pub supported: ExtensionSupport,
+    pub comment: Option<Cow<'a, str>>,
+    pub requires: Box<[Require<'a>]>,
+}
+
 impl<'a, 'input> Parse<'a, 'input> for Extension<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("extension") {
-            Ok(Some(Extension {
+            if let Some(number) = node.attribute("number") {
+                Ok(Some(Extension {
+                    name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+                    number: number.parse().unwrap(),
+                    kind: node.attribute("type").and_then(|v| v.parse().ok()),
+                    supported: get_req_attr(node, "supported")?.parse().unwrap(),
+                    requires_core: node.attribute("requiresCore").and_then(|v| v.parse().ok()),
+                    requires_depencies: node
+                        .attribute("requires")
+                        .map(|v| v.split(',').map(Cow::Borrowed).collect()),
+                    author: node.attribute("author").map(Cow::Borrowed),
+                    contact: node.attribute("contact").map(Cow::Borrowed),
+                    promoted_to: node
+                        .attribute("promotedto")
+                        .map(|v| ExtensionPromotion::from_str(v)),
+                    requires: Parse::parse(node)?,
+                    comment: node.attribute("comment").map(Cow::Borrowed),
+                }))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for PseudoExtension<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if node.has_tag_name("extension") && !node.has_attribute("number") {
+            Ok(Some(PseudoExtension {
                 name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                number: get_req_attr(node, "number")?.parse().unwrap(),
-                kind: node.attribute("type").and_then(|v| v.parse().ok()),
                 supported: get_req_attr(node, "supported")?.parse().unwrap(),
-                requires_core: node.attribute("requiresCore").and_then(|v| v.parse().ok()),
-                requires_depencies: node
-                    .attribute("requires")
-                    .map(|v| v.split(',').map(Cow::Borrowed).collect()),
-                author: node.attribute("author").map(Cow::Borrowed),
-                contact: node.attribute("contact").map(Cow::Borrowed),
-                promoted_to: node
-                    .attribute("promotedto")
-                    .map(|v| ExtensionPromotion::from_str(v)),
                 requires: Parse::parse(node)?,
                 comment: node.attribute("comment").map(Cow::Borrowed),
             }))

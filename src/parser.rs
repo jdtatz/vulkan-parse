@@ -382,14 +382,12 @@ pub(crate) fn vk_tokenize<'s, 'a: 's, 'input>(
     node.children()
         .filter(|n| n.is_element() || n.is_text())
         .flat_map(|n| {
-            let text = n
-                .text()
-                .expect("Empty elements are disallowed in vulkan's mixed pseudo-c/xml");
-            // let text = n.text().unwrap_or("");
+            // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
+            let text = n.text().unwrap_or("");
             if n.is_element() {
                 vec![VkXMLToken::TextTag {
                     name: Cow::Borrowed(n.tag_name().name()),
-                    text: Cow::Borrowed(n.text().unwrap()),
+                    text: Cow::Borrowed(text),
                 }]
             } else {
                 let extras = if parsing_macros {
