@@ -9,65 +9,21 @@ use crate::{get_req_attr, Parse, ParseResult};
 use super::common::*;
 use super::feature_registry::Require;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum ExtensionKind {
+    #[strum(serialize = "instance")]
     Instance,
+    #[strum(serialize = "device")]
     Device,
     // PhysicalDevice,
 }
 
-impl FromStr for ExtensionKind {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "instance" => Ok(Self::Instance),
-            "device" => Ok(Self::Device),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <extension type=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for ExtensionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Instance => write!(f, "instance"),
-            Self::Device => write!(f, "device"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum ExtensionSupport {
+    #[strum(serialize = "vulkan")]
     Vulkan,
+    #[strum(serialize = "disabled")]
     Disabled,
-}
-
-impl FromStr for ExtensionSupport {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "vulkan" => Ok(Self::Vulkan),
-            "disabled" => Ok(Self::Disabled),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <extension supported=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for ExtensionSupport {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Vulkan => write!(f, "vulkan"),
-            Self::Disabled => write!(f, "disabled"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

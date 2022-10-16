@@ -41,86 +41,37 @@ pub enum FormatChild<'a> {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 
 pub enum FormatChroma {
+    #[strum(serialize = "420")]
     Type420,
+    #[strum(serialize = "422")]
     Type422,
+    #[strum(serialize = "444")]
     Type444,
 }
 
-impl FromStr for FormatChroma {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "420" => Ok(Self::Type420),
-            "422" => Ok(Self::Type422),
-            "444" => Ok(Self::Type444),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <format chroma=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for FormatChroma {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Type420 => write!(f, "420"),
-            Self::Type422 => write!(f, "422"),
-            Self::Type444 => write!(f, "444"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 
 pub enum FormatCompressionType {
+    #[strum(serialize = "BC")]
     BC,
+    #[strum(serialize = "ETC2")]
     ETC2,
+    #[strum(serialize = "EAC")]
     EAC,
     // FIXME I'm really not sure what else to name these
     /// Adaptive Scalable Texture Compression (ASTC) Low Dynamic Range (LDR)
     #[allow(non_camel_case_types)]
+    #[strum(serialize = "ASTC LDR")]
     ASTC_LDR,
     /// Adaptive Scalable Texture Compression (ASTC) High Dynamic Range (HDR)
     #[allow(non_camel_case_types)]
+    #[strum(serialize = "ASTC HDR")]
     ASTC_HDR,
+    #[strum(serialize = "PVRTC")]
     PVRTC,
-}
-
-impl FromStr for FormatCompressionType {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "BC" => Ok(Self::BC),
-            "ETC2" => Ok(Self::ETC2),
-            "EAC" => Ok(Self::EAC),
-            "ASTC LDR" => Ok(Self::ASTC_LDR),
-            "ASTC HDR" => Ok(Self::ASTC_HDR),
-            "PVRTC" => Ok(Self::PVRTC),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <format compressed=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for FormatCompressionType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BC => write!(f, "BC"),
-            Self::ETC2 => write!(f, "ETC2"),
-            Self::EAC => write!(f, "EAC"),
-            Self::ASTC_LDR => write!(f, "ASTC LDR"),
-            Self::ASTC_HDR => write!(f, "ASTC HDR"),
-            Self::PVRTC => write!(f, "PVRTC"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -151,7 +102,7 @@ impl fmt::Display for ComponentBits {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 
 pub enum ComponentNumericFormat {
     SRGB,
@@ -165,48 +116,7 @@ pub enum ComponentNumericFormat {
     SFLOAT,
 }
 
-impl FromStr for ComponentNumericFormat {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "SRGB" => Ok(Self::SRGB),
-            "UNORM" => Ok(Self::UNORM),
-            "SNORM" => Ok(Self::SNORM),
-            "UINT" => Ok(Self::UINT),
-            "SINT" => Ok(Self::SINT),
-            "USCALED" => Ok(Self::USCALED),
-            "SSCALED" => Ok(Self::SSCALED),
-            "UFLOAT" => Ok(Self::UFLOAT),
-            "SFLOAT" => Ok(Self::SFLOAT),
-            #[cfg(debug_assertions)]
-            s => todo!(
-                "Unexpected <format><component numericFormat=...> of {:?}",
-                s
-            ),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for ComponentNumericFormat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ComponentNumericFormat::SRGB => write!(f, "SRGB"),
-            ComponentNumericFormat::UNORM => write!(f, "UNORM"),
-            ComponentNumericFormat::SNORM => write!(f, "SNORM"),
-            ComponentNumericFormat::UINT => write!(f, "UINT"),
-            ComponentNumericFormat::SINT => write!(f, "SINT"),
-            ComponentNumericFormat::USCALED => write!(f, "USCALED"),
-            ComponentNumericFormat::SSCALED => write!(f, "SSCALED"),
-            ComponentNumericFormat::UFLOAT => write!(f, "UFLOAT"),
-            ComponentNumericFormat::SFLOAT => write!(f, "SFLOAT"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 
 pub enum ComponentName {
     A,
@@ -215,38 +125,6 @@ pub enum ComponentName {
     B,
     S,
     D,
-}
-
-impl FromStr for ComponentName {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "A" => Ok(Self::A),
-            "R" => Ok(Self::R),
-            "G" => Ok(Self::G),
-            "B" => Ok(Self::B),
-            "S" => Ok(Self::S),
-            "D" => Ok(Self::D),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <format><component name=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for ComponentName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ComponentName::A => write!(f, "A"),
-            ComponentName::R => write!(f, "R"),
-            ComponentName::G => write!(f, "G"),
-            ComponentName::B => write!(f, "B"),
-            ComponentName::S => write!(f, "S"),
-            ComponentName::D => write!(f, "D"),
-        }
-    }
 }
 
 fn block_extent_from_str(s: &str) -> Option<[NonZeroU8; 3]> {

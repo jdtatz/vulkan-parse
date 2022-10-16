@@ -8,6 +8,7 @@ roxmltree = "~0.15.0"
 logos = "~0.12.1"
 peg = "~0.8.1"
 enumflags2 = {version = "~0.7.5", features = ["serde"]}
+strum = { version = "0.24", features = ["derive"] }
 serde = {version = "1", features = ["derive"]}
 
 [dev-dependencies]

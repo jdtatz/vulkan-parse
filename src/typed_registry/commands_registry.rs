@@ -39,52 +39,24 @@ pub struct ImplicitExternSyncParams<'a> {
 
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum Queue {
+    #[strum(serialize = "graphics")]
     GRAPHICS,
+    #[strum(serialize = "compute")]
     COMPUTE,
+    #[strum(serialize = "transfer")]
     TRANSFER,
+    #[strum(serialize = "sparse_binding")]
     SPARSE_BINDING,
+    #[strum(serialize = "protected")]
     PROTECTED,
+    #[strum(serialize = "decode")]
     VIDEO_DECODE,
+    #[strum(serialize = "encode")]
     VIDEO_ENCODE,
+    #[strum(serialize = "opticalflow")]
     OPTICAL_FLOW,
-}
-
-impl FromStr for Queue {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "graphics" => Ok(Self::GRAPHICS),
-            "compute" => Ok(Self::COMPUTE),
-            "transfer" => Ok(Self::TRANSFER),
-            "sparse_binding" => Ok(Self::SPARSE_BINDING),
-            "protected" => Ok(Self::PROTECTED),
-            "decode" => Ok(Self::VIDEO_DECODE),
-            "encode" => Ok(Self::VIDEO_ENCODE),
-            "opticalflow" => Ok(Self::OPTICAL_FLOW),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <command queues=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => return Ok(None),
-        }
-    }
-}
-
-impl fmt::Display for Queue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Queue::GRAPHICS => write!(f, "graphics"),
-            Queue::COMPUTE => write!(f, "compute"),
-            Queue::TRANSFER => write!(f, "transfer"),
-            Queue::SPARSE_BINDING => write!(f, "sparse_binding"),
-            Queue::PROTECTED => write!(f, "protected"),
-            Queue::VIDEO_DECODE => write!(f, "decode"),
-            Queue::VIDEO_ENCODE => write!(f, "encode"),
-            Queue::OPTICAL_FLOW => write!(f, "opticalflow"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -113,140 +85,48 @@ impl<'a> fmt::Display for SuccessCodes<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum Renderpass {
+    #[strum(serialize = "inside")]
     Inside,
+    #[strum(serialize = "outside")]
     Outside,
+    #[strum(serialize = "both")]
     Both,
 }
 
-impl FromStr for Renderpass {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "inside" => Ok(Self::Inside),
-            "outside" => Ok(Self::Outside),
-            "both" => Ok(Self::Both),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <command renderpass=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => return Ok(None),
-        }
-    }
-}
-
-impl fmt::Display for Renderpass {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Renderpass::Inside => write!(f, "inside"),
-            Renderpass::Outside => write!(f, "outside"),
-            Renderpass::Both => write!(f, "both"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum VideoCoding {
+    #[strum(serialize = "inside")]
     Inside,
+    #[strum(serialize = "outside")]
     Outside,
+    #[strum(serialize = "both")]
     Both,
-}
-
-impl FromStr for VideoCoding {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "inside" => Ok(Self::Inside),
-            "outside" => Ok(Self::Outside),
-            "both" => Ok(Self::Both),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <command videocoding=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => return Ok(None),
-        }
-    }
-}
-
-impl fmt::Display for VideoCoding {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            VideoCoding::Inside => write!(f, "inside"),
-            VideoCoding::Outside => write!(f, "outside"),
-            VideoCoding::Both => write!(f, "both"),
-        }
-    }
 }
 
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum CommandBufferLevel {
+    #[strum(serialize = "primary")]
     Primary,
+    #[strum(serialize = "secondary")]
     Secondary,
 }
 
-impl FromStr for CommandBufferLevel {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "primary" => Ok(Self::Primary),
-            "secondary" => Ok(Self::Secondary),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <command cmdbufferlevel=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => return Ok(None),
-        }
-    }
-}
-
-impl fmt::Display for CommandBufferLevel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CommandBufferLevel::Primary => write!(f, "primary"),
-            CommandBufferLevel::Secondary => write!(f, "secondary"),
-        }
-    }
-}
-
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum Task {
+    #[strum(serialize = "action")]
     ACTION,
+    #[strum(serialize = "state")]
     STATE,
+    #[strum(serialize = "synchronization")]
     SYNCHRONIZATION,
+    #[strum(serialize = "indirection")]
     INDIRECTION,
-}
-
-impl FromStr for Task {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "action" => Ok(Self::ACTION),
-            "state" => Ok(Self::STATE),
-            "synchronization" => Ok(Self::SYNCHRONIZATION),
-            "indirection" => Ok(Self::INDIRECTION),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <command tasks=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => return Ok(None),
-        }
-    }
-}
-
-impl fmt::Display for Task {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Task::ACTION => write!(f, "action"),
-            Task::STATE => write!(f, "state"),
-            Task::SYNCHRONIZATION => write!(f, "synchronization"),
-            Task::INDIRECTION => write!(f, "indirection"),
-        }
-    }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {

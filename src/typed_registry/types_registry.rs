@@ -119,32 +119,11 @@ impl<'a> fmt::Display for ExternSyncKind<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
+    #[strum(serialize = "true")]
     Value,
-}
-
-impl FromStr for NoAutoValidityKind {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "true" => Ok(Self::Value),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <[field-like] noautovalidity=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for NoAutoValidityKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Value => write!(f, "true"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -342,96 +321,42 @@ pub struct UnionType<'a> {
     pub returned_only: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 #[non_exhaustive]
 pub enum MemberSelector {
+    #[strum(serialize = "type")]
     Type,
+    #[strum(serialize = "format")]
     Format,
+    #[strum(serialize = "geometryType")]
     GeometryType,
 }
 
-impl FromStr for MemberSelector {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "type" => Ok(Self::Type),
-            "format" => Ok(Self::Format),
-            "geometryType" => Ok(Self::GeometryType),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <member selector=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for MemberSelector {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Type => write!(f, "type"),
-            Self::Format => write!(f, "format"),
-            Self::GeometryType => write!(f, "geometryType"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 #[non_exhaustive]
 pub enum MemberLimitType {
+    #[strum(serialize = "min")]
     Min,
+    #[strum(serialize = "max")]
     Max,
+    #[strum(serialize = "exact")]
     Exact,
+    #[strum(serialize = "bits")]
     Bits,
+    #[strum(serialize = "bitmask")]
     Bitmask,
+    #[strum(serialize = "range")]
     Range,
+    #[strum(serialize = "struct")]
     Struct,
+    #[strum(serialize = "noauto")]
     NoAuto,
+    #[strum(serialize = "min,pot")]
     MinPot,
+    #[strum(serialize = "max,pot")]
     MaxPot,
+    #[strum(serialize = "min,mul")]
     MinMul,
-}
-
-impl FromStr for MemberLimitType {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "min" => Ok(Self::Min),
-            "max" => Ok(Self::Max),
-            "exact" => Ok(Self::Exact),
-            "bits" => Ok(Self::Bits),
-            "bitmask" => Ok(Self::Bitmask),
-            "range" => Ok(Self::Range),
-            "struct" => Ok(Self::Struct),
-            "noauto" => Ok(Self::NoAuto),
-            "min,pot" => Ok(Self::MinPot),
-            "max,pot" => Ok(Self::MaxPot),
-            "min,mul" => Ok(Self::MinMul),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <member limittype=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for MemberLimitType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MemberLimitType::Min => write!(f, "min"),
-            MemberLimitType::Max => write!(f, "max"),
-            MemberLimitType::Exact => write!(f, "exact"),
-            MemberLimitType::Bits => write!(f, "bits"),
-            MemberLimitType::Bitmask => write!(f, "bitmask"),
-            MemberLimitType::Range => write!(f, "range"),
-            MemberLimitType::Struct => write!(f, "struct"),
-            MemberLimitType::NoAuto => write!(f, "noauto"),
-            MemberLimitType::MinPot => write!(f, "min,pot"),
-            MemberLimitType::MaxPot => write!(f, "max,pot"),
-            MemberLimitType::MinMul => write!(f, "min,mul"),
-        }
-    }
 }
 
 /// <member>

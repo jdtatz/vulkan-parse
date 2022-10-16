@@ -7,31 +7,10 @@ use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult
 
 use super::common::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum FeatureApi {
+    #[strum(serialize = "vulkan")]
     Vulkan,
-}
-
-impl FromStr for FeatureApi {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "vulkan" => Ok(Self::Vulkan),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <feature api=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for FeatureApi {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Vulkan => write!(f, "vulkan"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -66,31 +45,10 @@ pub enum RequireValue<'a> {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum OffsetDirection {
+    #[strum(serialize = "-")]
     Negative,
-}
-
-impl FromStr for OffsetDirection {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "-" => Ok(Self::Negative),
-            #[cfg(debug_assertions)]
-            s => todo!("Unexpected <feature><require><enum dir=...> of {:?}", s),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for OffsetDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Negative => write!(f, "-"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
