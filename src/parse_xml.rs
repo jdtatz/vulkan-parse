@@ -1,6 +1,7 @@
 use std::fmt;
 
 use roxmltree::{Document, Node, NodeId};
+use serde::Serialize;
 
 use crate::Registry;
 
@@ -171,7 +172,7 @@ impl<'a, 'input: 'a, V: ParseElements<'a, 'input>> Parse<'a, 'input> for V {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Terminated<V, T>(pub V, pub Option<T>);
 
 impl<'a, 'input: 'a, V: ParseElements<'a, 'input>, T: Parse<'a, 'input>> Parse<'a, 'input>

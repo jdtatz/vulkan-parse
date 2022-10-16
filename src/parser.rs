@@ -6,6 +6,7 @@ use std::{
 };
 
 use logos::{Lexer, Logos};
+use serde::Serialize;
 
 use crate::{
     ArrayLength, Constant, DefineType, DefineTypeValue, FieldLike, FnPtrType, KeepNewLines,
@@ -14,7 +15,7 @@ use crate::{
 // Using the C grammer from https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1124.pdf
 
 // C Type Decleration types
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum TypeQualifer {
     Const,
@@ -22,7 +23,7 @@ pub enum TypeQualifer {
     Volatile,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum TypeIdentifier<'a> {
     Plain(Cow<'a, str>),
@@ -30,7 +31,7 @@ pub enum TypeIdentifier<'a> {
     Union(Cow<'a, str>),
     Enum(Cow<'a, str>),
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum TypeSpecifier<'a> {
     Void,
@@ -59,7 +60,7 @@ impl<'a> TypeSpecifier<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum TypeName<'a> {
     Specifier(TypeSpecifier<'a>),
@@ -82,13 +83,13 @@ enum TypeSpecifierOrQual<'a> {
 
 // C Expression types
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum FixOrder {
     Prefix,
     Postfix,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum ComparisionOp {
     LT,
@@ -99,7 +100,7 @@ pub enum ComparisionOp {
     GT,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum UnaryOp<'a> {
     Address,
@@ -113,7 +114,7 @@ pub enum UnaryOp<'a> {
     Cast(TypeName<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum BinaryOp {
     Addition,
     Subtraction,
@@ -129,7 +130,7 @@ pub enum BinaryOp {
     LogicalOr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum MemberAccess {
     /// '.'
     Direct,
@@ -137,7 +138,7 @@ pub enum MemberAccess {
     Pointer,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Expression<'a> {
     Identifier(Cow<'a, str>),
     Constant(Constant),
@@ -334,7 +335,7 @@ impl fmt::Display for Expression<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VkXMLToken<'a> {
     C(Token<'a>),
     TextTag {
@@ -352,7 +353,7 @@ impl<'a> fmt::Display for VkXMLToken<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VkXMLTokens<'s, 'a>(pub Cow<'s, [VkXMLToken<'a>]>);
 
 impl<'s, 'a> Deref for VkXMLTokens<'s, 'a> {

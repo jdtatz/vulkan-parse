@@ -1,14 +1,15 @@
 use std::borrow::Cow;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{get_req_attr, Parse, ParseResult};
 
 use super::common::*;
 use super::feature_registry::Require;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ExtensionKind {
     Instance,
     Device,
@@ -30,7 +31,16 @@ impl FromStr for ExtensionKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for ExtensionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Instance => write!(f, "instance"),
+            Self::Device => write!(f, "device"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum ExtensionSupport {
     Vulkan,
     Disabled,
@@ -51,7 +61,16 @@ impl FromStr for ExtensionSupport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for ExtensionSupport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Vulkan => write!(f, "vulkan"),
+            Self::Disabled => write!(f, "disabled"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ExtensionPromotion<'a> {
     Core(SemVarVersion),
     Extension(Cow<'a, str>),
@@ -67,7 +86,16 @@ impl<'a> ExtensionPromotion<'a> {
     }
 }
 
-#[derive(Debug)]
+impl<'a> fmt::Display for ExtensionPromotion<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Core(v) => write!(f, "VK_VERSION_{}_{}", v.major, v.minor),
+            Self::Extension(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Extension<'a> {
     pub name: Cow<'a, str>,
     pub number: u32,
@@ -86,7 +114,7 @@ pub struct Extension<'a> {
     pub requires: Box<[Require<'a>]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PseudoExtension<'a> {
     pub name: Cow<'a, str>,
     pub supported: ExtensionSupport,

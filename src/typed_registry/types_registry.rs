@@ -1,10 +1,12 @@
 use std::{
     borrow::Cow,
+    fmt,
     num::{NonZeroU32, NonZeroU8},
     str::FromStr,
 };
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{
     c_with_vk_ext, get_req_attr, get_req_text, parse_cexpr, vk_tokenize, ErrorKind, Expression,
@@ -13,19 +15,19 @@ use crate::{
 
 use super::common::*;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum PointerKind {
     Single,
     Double { inner_is_const: bool },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ArrayLength<'a> {
     Static(NonZeroU32),
     Constant(Cow<'a, str>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum DynamicLength<'a> {
     NullTerminated,
     // FIXME only found in VkAccelerationStructureBuildGeometryInfoKHR->ppGeometries, is this a mistake?
@@ -37,7 +39,20 @@ pub enum DynamicLength<'a> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl<'a> fmt::Display for DynamicLength<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DynamicLength::NullTerminated => write!(f, "null-terminated"),
+            DynamicLength::Static(n) => write!(f, "{}", n),
+            DynamicLength::Parameterized(p) => write!(f, "{}", p),
+            DynamicLength::ParameterizedField { parameter, field } => {
+                write!(f, "{}-&gt;{}", parameter, field)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum DynamicShapeKind<'a> {
     Expression {
         latex_expr: Cow<'a, str>,
@@ -47,7 +62,7 @@ pub enum DynamicShapeKind<'a> {
     Double(DynamicLength<'a>, DynamicLength<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum OptionalKind {
     Single(bool),
     Double(bool, bool),
@@ -65,7 +80,16 @@ impl FromStr for OptionalKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for OptionalKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OptionalKind::Single(b) => write!(f, "{}", b),
+            OptionalKind::Double(b1, b2) => write!(f, "{},{}", b1, b2),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
     Value,
@@ -86,7 +110,16 @@ impl<'a> ExternSyncKind<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl<'a> fmt::Display for ExternSyncKind<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExternSyncKind::Value => write!(f, "true"),
+            ExternSyncKind::Fields(fs) => crate::fmt_write_interspersed(f, fs.iter(), ","),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
     Value,
@@ -106,7 +139,15 @@ impl FromStr for NoAutoValidityKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for NoAutoValidityKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Value => write!(f, "true"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FieldLike<'a> {
     pub name: Cow<'a, str>,
     pub type_name: TypeSpecifier<'a>,
@@ -145,7 +186,7 @@ impl<'a> FieldLike<'a> {
 }
 
 /// <type>
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Type<'a> {
     /// <type> without category attribute
     Requires(RequiresType<'a>),
@@ -170,14 +211,14 @@ pub enum Type<'a> {
 }
 
 /// <type> without category attribute
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RequiresType<'a> {
     pub name: Cow<'a, str>,
     pub requires: Option<Cow<'a, str>>,
 }
 
 /// <type category="include">
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IncludeType<'a> {
     pub name: Cow<'a, str>,
     /// #include "{name}" is a local include
@@ -185,7 +226,7 @@ pub struct IncludeType<'a> {
 }
 
 /// <type category="define">
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DefineType<'a> {
     pub name: Cow<'a, str>,
     pub comment: Option<Cow<'a, str>>,
@@ -194,7 +235,7 @@ pub struct DefineType<'a> {
     pub value: DefineTypeValue<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum DefineTypeValue<'a> {
     Expression(Expression<'a>),
     FunctionDefine {
@@ -211,7 +252,7 @@ pub enum DefineTypeValue<'a> {
 // TODO: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
 //       but should be  `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;`
 /// <type category="basetype">
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BaseTypeType<'a> {
     pub name: Cow<'a, str>,
     // FIXME: base_type can be a forward decleration, a simple typedef, or OBJC with define guards
@@ -220,7 +261,7 @@ pub struct BaseTypeType<'a> {
 }
 
 /// <type category="bitmask">
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BitmaskType<'a> {
     pub name: Cow<'a, str>,
     pub is_64bits: bool,
@@ -228,7 +269,7 @@ pub struct BitmaskType<'a> {
 }
 
 /// <type category="handle">
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HandleType<'a> {
     pub name: Cow<'a, str>,
     pub handle_kind: HandleKind,
@@ -236,7 +277,7 @@ pub struct HandleType<'a> {
     pub parent: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum HandleKind {
     Dispatch,
     NoDispatch,
@@ -260,14 +301,23 @@ impl FromStr for HandleKind {
     }
 }
 
+impl fmt::Display for HandleKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HandleKind::Dispatch => write!(f, "VK_DEFINE_HANDLE"),
+            HandleKind::NoDispatch => write!(f, "VK_DEFINE_NON_DISPATCHABLE_HANDLE"),
+        }
+    }
+}
+
 /// <type category="enum">
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EnumType<'a> {
     pub name: Cow<'a, str>,
 }
 
 /// <type category="funcpointer">
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FnPtrType<'a> {
     pub name_and_return: FieldLike<'a>,
     pub requires: Option<Cow<'a, str>>,
@@ -275,7 +325,7 @@ pub struct FnPtrType<'a> {
 }
 
 /// <type category="struct">
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StructType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
@@ -285,14 +335,14 @@ pub struct StructType<'a> {
 }
 
 /// <type category="union">
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnionType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
     pub returned_only: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub enum MemberSelector {
     Type,
@@ -316,7 +366,17 @@ impl FromStr for MemberSelector {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for MemberSelector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Type => write!(f, "type"),
+            Self::Format => write!(f, "format"),
+            Self::GeometryType => write!(f, "geometryType"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub enum MemberLimitType {
     Min,
@@ -356,8 +416,26 @@ impl FromStr for MemberLimitType {
     }
 }
 
+impl fmt::Display for MemberLimitType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemberLimitType::Min => write!(f, "min"),
+            MemberLimitType::Max => write!(f, "max"),
+            MemberLimitType::Exact => write!(f, "exact"),
+            MemberLimitType::Bits => write!(f, "bits"),
+            MemberLimitType::Bitmask => write!(f, "bitmask"),
+            MemberLimitType::Range => write!(f, "range"),
+            MemberLimitType::Struct => write!(f, "struct"),
+            MemberLimitType::NoAuto => write!(f, "noauto"),
+            MemberLimitType::MinPot => write!(f, "min,pot"),
+            MemberLimitType::MaxPot => write!(f, "max,pot"),
+            MemberLimitType::MinMul => write!(f, "min,mul"),
+        }
+    }
+}
+
 /// <member>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Member<'a> {
     pub base: FieldLike<'a>,
     pub selector: Option<MemberSelector>,

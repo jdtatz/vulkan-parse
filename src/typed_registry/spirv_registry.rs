@@ -1,12 +1,13 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt};
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult};
 
 use super::common::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpirvExtension<'a> {
     pub name: Cow<'a, str>,
     // TODO, usually the only diffrence between `name` & `enable_extension` is the prefix ("SPV_" vs "VK_"), but not always
@@ -14,13 +15,13 @@ pub struct SpirvExtension<'a> {
     pub enable_version: Option<SemVarVersion>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpirvCapability<'a> {
     pub name: Cow<'a, str>,
     pub enables: Box<[EnableSpirvCapability<'a>]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum EnableSpirvCapability<'a> {
     Version(VersionEnable),
     Extension(ExtensionEnable<'a>),
@@ -28,7 +29,7 @@ pub enum EnableSpirvCapability<'a> {
     Property(PropertyEnable<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum EnableRequires<'a> {
     Core(SemVarVersion),
     Extension(Cow<'a, str>),
@@ -46,21 +47,30 @@ impl<'a> EnableRequires<'a> {
         }
     }
 }
+impl<'a> fmt::Display for EnableRequires<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EnableRequires::Core(v) => write!(f, "VK_VERSION_{}_{}", v.major, v.minor),
+            EnableRequires::Extension(e) => write!(f, "{}", e),
+            EnableRequires::Mix(v, e) => write!(f, "VK_VERSION_{}_{},{}", v.major, v.minor, e),
+        }
+    }
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VersionEnable(SemVarVersion);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExtensionEnable<'a>(Cow<'a, str>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StructEnable<'a> {
     pub name: Cow<'a, str>,
     pub feature: Cow<'a, str>,
     pub requires: EnableRequires<'a>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PropertyEnable<'a> {
     pub name: Cow<'a, str>,
     pub member: Cow<'a, str>,

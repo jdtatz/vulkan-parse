@@ -1,12 +1,13 @@
-use std::{borrow::Cow, str::FromStr};
+use std::{borrow::Cow, fmt, str::FromStr};
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult};
 
 use super::common::*;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FeatureApi {
     Vulkan,
 }
@@ -25,7 +26,15 @@ impl FromStr for FeatureApi {
     }
 }
 
-#[derive(Debug)]
+impl fmt::Display for FeatureApi {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Vulkan => write!(f, "vulkan"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Feature<'a> {
     pub name: Cow<'a, str>,
     pub api: FeatureApi,
@@ -34,13 +43,13 @@ pub struct Feature<'a> {
     pub requires: Box<[Require<'a>]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Require<'a> {
     pub comment: Option<Cow<'a, str>>,
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum RequireValue<'a> {
     Type {
         name: Cow<'a, str>,
@@ -57,7 +66,7 @@ pub enum RequireValue<'a> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum OffsetDirection {
     Negative,
 }
@@ -76,7 +85,15 @@ impl FromStr for OffsetDirection {
     }
 }
 
-#[derive(Debug)]
+impl fmt::Display for OffsetDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Negative => write!(f, "-"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum RequireValueEnum<'a> {
     Value(Expression<'a>),
     Alias(Cow<'a, str>),

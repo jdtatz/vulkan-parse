@@ -1,10 +1,11 @@
-use std::{borrow::Cow, num::NonZeroU8, str::FromStr};
+use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{get_req_attr, Parse, ParseResult};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub struct Format<'a> {
     pub name: Cow<'a, str>,
@@ -18,7 +19,7 @@ pub struct Format<'a> {
     pub children: Box<[FormatChild<'a>]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
 pub enum FormatChild<'a> {
     Component {
@@ -40,7 +41,7 @@ pub enum FormatChild<'a> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 
 pub enum FormatChroma {
     Type420,
@@ -64,7 +65,17 @@ impl FromStr for FormatChroma {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for FormatChroma {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Type420 => write!(f, "420"),
+            Self::Type422 => write!(f, "422"),
+            Self::Type444 => write!(f, "444"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 
 pub enum FormatCompressionType {
     BC,
@@ -99,7 +110,20 @@ impl FromStr for FormatCompressionType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for FormatCompressionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BC => write!(f, "BC"),
+            Self::ETC2 => write!(f, "ETC2"),
+            Self::EAC => write!(f, "EAC"),
+            Self::ASTC_LDR => write!(f, "ASTC LDR"),
+            Self::ASTC_HDR => write!(f, "ASTC HDR"),
+            Self::PVRTC => write!(f, "PVRTC"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 
 pub enum ComponentBits {
     Compressed,
@@ -118,7 +142,16 @@ impl FromStr for ComponentBits {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for ComponentBits {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Compressed => write!(f, "compressed"),
+            Self::Bits(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 
 pub enum ComponentNumericFormat {
     SRGB,
@@ -157,7 +190,23 @@ impl FromStr for ComponentNumericFormat {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl fmt::Display for ComponentNumericFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ComponentNumericFormat::SRGB => write!(f, "SRGB"),
+            ComponentNumericFormat::UNORM => write!(f, "UNORM"),
+            ComponentNumericFormat::SNORM => write!(f, "SNORM"),
+            ComponentNumericFormat::UINT => write!(f, "UINT"),
+            ComponentNumericFormat::SINT => write!(f, "SINT"),
+            ComponentNumericFormat::USCALED => write!(f, "USCALED"),
+            ComponentNumericFormat::SSCALED => write!(f, "SSCALED"),
+            ComponentNumericFormat::UFLOAT => write!(f, "UFLOAT"),
+            ComponentNumericFormat::SFLOAT => write!(f, "SFLOAT"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 
 pub enum ComponentName {
     A,
@@ -183,6 +232,19 @@ impl FromStr for ComponentName {
             s => todo!("Unexpected <format><component name=...> of {:?}", s),
             #[cfg(not(debug_assertions))]
             _ => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for ComponentName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ComponentName::A => write!(f, "A"),
+            ComponentName::R => write!(f, "R"),
+            ComponentName::G => write!(f, "G"),
+            ComponentName::B => write!(f, "B"),
+            ComponentName::S => write!(f, "S"),
+            ComponentName::D => write!(f, "D"),
         }
     }
 }

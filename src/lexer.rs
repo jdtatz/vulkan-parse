@@ -1,7 +1,8 @@
 use logos::{Lexer, Logos};
+use serde::Serialize;
 use std::{borrow::Cow, fmt, str::FromStr};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum Constant {
     Char(u8),
     Integer(u64),
@@ -43,7 +44,7 @@ fn fix_literal(lit: &str) -> Cow<str> {
 #[derive(Debug, Clone, Copy)]
 pub struct KeepNewLines;
 
-#[derive(Logos, Debug, Clone, PartialEq)]
+#[derive(Logos, Debug, Clone, PartialEq, Eq, Serialize)]
 #[logos(extras = Option<KeepNewLines>)]
 #[logos(subpattern decimal = r"[1-9][0-9]*")]
 #[logos(subpattern hex = r"[0-9a-fA-F]+")]

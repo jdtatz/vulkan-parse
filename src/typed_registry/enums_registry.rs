@@ -1,19 +1,20 @@
 use std::borrow::Cow;
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult, Terminated};
 
 use super::common::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Enums<'a> {
     pub name: Cow<'a, str>,
     pub comment: Option<Cow<'a, str>>,
     pub values: EnumsValues<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum EnumsValues<'a> {
     /// no type attribute
     Constants(CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>),
@@ -23,7 +24,7 @@ pub enum EnumsValues<'a> {
     Bitmask(CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConstantEnum<'a> {
     pub name: Cow<'a, str>,
     pub type_name: Cow<'a, str>,
@@ -31,28 +32,28 @@ pub struct ConstantEnum<'a> {
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ValueEnum<'a> {
     pub name: Cow<'a, str>,
     pub value: i64,
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BitPosEnum<'a> {
     pub name: Cow<'a, str>,
     pub bitpos: u8,
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum BitmaskEnum<'a> {
     Value(ValueEnum<'a>),
     BitPos(BitPosEnum<'a>),
 }
 
 /// <enums type="enum"> ... <unused /> </<enums>
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnusedEnum<'a> {
     pub start: i64,
     pub comment: Option<Cow<'a, str>>,

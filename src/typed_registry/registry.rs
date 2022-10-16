@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::get_req_attr;
 use crate::Parse;
@@ -16,10 +17,10 @@ use super::format_registry::*;
 use super::spirv_registry::*;
 use super::types_registry::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Registry<'a>(pub CommentendChildren<'a, RegistryChild<'a>>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum RegistryChild<'a> {
     Platforms(Box<[Platform<'a>]>, Option<Comment<'a>>),
     Tags(Box<[Tag<'a>]>, Option<Comment<'a>>),
@@ -36,21 +37,21 @@ pub enum RegistryChild<'a> {
     SpirvCapabilities(Box<[SpirvCapability<'a>]>, Option<Comment<'a>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Platform<'a> {
     pub name: Cow<'a, str>,
     pub protect: Cow<'a, str>,
     pub comment: Cow<'a, str>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Tag<'a> {
     pub name: Cow<'a, str>,
     pub author: Cow<'a, str>,
     pub contact: Cow<'a, str>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum WrappedExtension<'a> {
     Extension(Extension<'a>),
     PseudoExtension(PseudoExtension<'a>),

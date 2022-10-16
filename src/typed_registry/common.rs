@@ -1,17 +1,19 @@
 use std::{
     borrow::Cow,
+    fmt,
     ops::{Deref, DerefMut},
     str::FromStr,
 };
 
 use roxmltree::Node;
+use serde::Serialize;
 
 use crate::{get_req_attr, Parse, ParseElements, ParseResult};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Comment<'a>(pub Cow<'a, str>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum MaybeComment<'a, T> {
     Value(T),
     Comment(Comment<'a>),
@@ -26,7 +28,7 @@ impl<'a, T> MaybeComment<'a, T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommentendChildren<'a, T>(pub Box<[MaybeComment<'a, T>]>);
 
 impl<'a, T: 'a> CommentendChildren<'a, T> {
@@ -57,7 +59,7 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum DefinitionOrAlias<'a, T> {
     Alias {
         name: Cow<'a, str>,
@@ -67,7 +69,7 @@ pub enum DefinitionOrAlias<'a, T> {
     Definition(T),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct SemVarVersion {
     pub major: u32,
     pub minor: u32,
@@ -98,6 +100,16 @@ impl FromStr for SemVarVersion {
                 minor: 0,
                 patch: None,
             })
+        }
+    }
+}
+
+impl fmt::Display for SemVarVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(patch) = self.patch {
+            write!(f, "{}.{}.{}", self.major, self.minor, patch)
+        } else {
+            write!(f, "{}.{}", self.major, self.minor)
         }
     }
 }
