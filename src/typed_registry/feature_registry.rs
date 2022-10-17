@@ -1,9 +1,11 @@
-use std::{borrow::Cow, fmt, str::FromStr};
+use std::borrow::Cow;
 
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult};
+use crate::{
+    attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
+};
 
 use super::common::*;
 
@@ -69,10 +71,10 @@ impl<'a, 'input> Parse<'a, 'input> for Feature<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("feature") {
             Ok(Some(Feature {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                api: get_req_attr(node, "api")?.parse().unwrap(),
-                number: get_req_attr(node, "number")?.parse().unwrap(),
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                name: attribute(node, "name")?,
+                api: attribute(node, "api")?,
+                number: attribute_fs(node, "number")?,
+                comment: try_attribute(node, "comment")?,
                 requires: Parse::parse(node)?,
             }))
         } else {
@@ -85,7 +87,7 @@ impl<'a, 'input> Parse<'a, 'input> for Require<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("require") {
             Ok(Some(Require {
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                comment: try_attribute(node, "comment")?,
                 values: Parse::parse(node)?,
             }))
         } else {
@@ -98,17 +100,17 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "type" => Ok(Some(RequireValue::Type {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                name: attribute(node, "name")?,
+                comment: try_attribute(node, "comment")?,
             })),
             "command" => Ok(Some(RequireValue::Command {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                name: attribute(node, "name")?,
+                comment: try_attribute(node, "comment")?,
             })),
             "enum" => Ok(Some(RequireValue::Enum {
-                extends: node.attribute("extends").map(Cow::Borrowed),
+                extends: try_attribute(node, "extends")?,
                 value: Parse::parse(node)?,
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                comment: try_attribute(node, "comment")?,
             })),
             _ => Ok(None),
         }
@@ -117,21 +119,19 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for RequireValueEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(value) = node.attribute("value") {
-            Ok(Some(RequireValueEnum::Value(
-                parse_cexpr(value).map_err(|e| ErrorKind::MixedParseError(e, node.id()))?,
-            )))
-        } else if let Some(alias) = node.attribute("alias") {
-            Ok(Some(RequireValueEnum::Alias(Cow::Borrowed(alias))))
-        } else if let Some(offset) = node.attribute("offset") {
+        if let Some(value) = try_attribute(node, "value")? {
+            Ok(Some(RequireValueEnum::Value(value)))
+        } else if let Some(alias) = try_attribute(node, "alias")? {
+            Ok(Some(RequireValueEnum::Alias(alias)))
+        } else if let Some(offset) = try_attribute_fs(node, "offset")? {
             Ok(Some(RequireValueEnum::Offset {
-                // extnumber: get_req_attr(node, "extnumber")?.parse().unwrap(),
-                extnumber: node.attribute("extnumber").and_then(|v| v.parse().ok()),
-                offset: offset.parse().unwrap(),
-                direction: node.attribute("dir").and_then(|v| v.parse().ok()),
+                // extnumber: attribute(node, "extnumber")?,
+                extnumber: try_attribute_fs(node, "extnumber")?,
+                offset,
+                direction: try_attribute(node, "dir")?,
             }))
-        } else if let Some(bitpos) = node.attribute("bitpos") {
-            Ok(Some(RequireValueEnum::Bitpos(bitpos.parse().unwrap())))
+        } else if let Some(bitpos) = try_attribute_fs(node, "bitpos")? {
+            Ok(Some(RequireValueEnum::Bitpos(bitpos)))
         } else {
             Ok(None)
         }

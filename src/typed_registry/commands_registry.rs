@@ -1,9 +1,9 @@
-use std::{borrow::Cow, fmt, str::FromStr};
+use std::{borrow::Cow, fmt};
 
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{ErrorKind, Parse, ParseResult};
+use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
 
 use super::FieldLike;
 
@@ -13,7 +13,7 @@ pub struct Command<'a> {
     pub params: Box<[CommandParam<'a>]>,
 
     pub successcodes: Option<SuccessCodes<'a>>,
-    pub errorcodes: Option<Box<[Cow<'a, str>]>>,
+    pub errorcodes: Option<Vec<Cow<'a, str>>>,
 
     pub queues: Option<enumflags2::BitFlags<Queue>>,
     pub cmdbufferlevel: Option<enumflags2::BitFlags<CommandBufferLevel>>,
@@ -28,7 +28,7 @@ pub struct Command<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandParam<'a> {
     pub base: FieldLike<'a>,
-    pub validstructs: Option<Box<[Cow<'a, str>]>>,
+    pub validstructs: Option<Vec<Cow<'a, str>>>,
     pub stride: Option<Cow<'a, str>>,
 }
 
@@ -66,8 +66,8 @@ pub enum SuccessCodes<'a> {
     Codes(Box<[Cow<'a, str>]>),
 }
 
-impl<'a> SuccessCodes<'a> {
-    pub fn from_str(s: &'a str) -> Self {
+impl<'a> From<&'a str> for SuccessCodes<'a> {
+    fn from(s: &'a str) -> Self {
         if s == "VK_SUCCESS" {
             Self::DefaultSuccess
         } else {
@@ -134,10 +134,8 @@ impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {
         if node.has_tag_name("param") {
             Ok(Some(CommandParam {
                 base: Parse::parse(node)?,
-                validstructs: node
-                    .attribute("validstructs")
-                    .map(|s| s.split(',').map(Cow::Borrowed).collect()),
-                stride: node.attribute("stride").map(Cow::Borrowed),
+                validstructs: try_attribute_sep::<_, ','>(node, "validstructs")?,
+                stride: try_attribute(node, "stride")?,
             }))
         } else {
             Ok(None)
@@ -161,12 +159,6 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
     }
 }
 
-fn comma_sep_bitflags<T: FromStr + enumflags2::BitFlag>(
-    s: &str,
-) -> Option<enumflags2::BitFlags<T>> {
-    s.split(',').map(T::from_str).collect::<Result<_, _>>().ok()
-}
-
 impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("command") {
@@ -176,37 +168,20 @@ impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
                 .filter(|n| n.has_tag_name("proto"))
                 .ok_or_else(|| ErrorKind::MissingChildElement("proto", node.id()))?;
             let proto = Parse::parse(proto_node)?;
-            let last = node.last_element_child().unwrap();
-            let (params, iesp) = if let Some(iesp) = ImplicitExternSyncParams::try_parse(last)? {
-                it.next_back();
-                (
-                    it.map(CommandParam::parse).collect::<ParseResult<_>>()?,
-                    Some(iesp),
-                )
-            } else {
-                (
-                    it.map(CommandParam::parse).collect::<ParseResult<_>>()?,
-                    None,
-                )
-            };
-
+            let (params, implicitexternsyncparams) = crate::parse_terminated(it)?;
             Ok(Some(Command {
                 proto,
                 params,
-                implicitexternsyncparams: iesp,
-                successcodes: node.attribute("returnedonly").map(SuccessCodes::from_str),
-                errorcodes: node
-                    .attribute("errorcodes")
-                    .map(|s| s.split(',').map(Cow::Borrowed).collect()),
-                queues: node.attribute("queues").and_then(comma_sep_bitflags),
-                cmdbufferlevel: node
-                    .attribute("cmdbufferlevel")
-                    .and_then(comma_sep_bitflags),
-                description: node.attribute("description").map(Cow::Borrowed),
-                tasks: node.attribute("tasks").and_then(comma_sep_bitflags),
-                videocoding: node.attribute("videocoding").and_then(|v| v.parse().ok()),
-                renderpass: node.attribute("renderpass").and_then(|v| v.parse().ok()),
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                implicitexternsyncparams,
+                successcodes: try_attribute(node, "returnedonly")?,
+                errorcodes: try_attribute_sep::<_, ','>(node, "errorcodes")?,
+                queues: try_attribute_sep::<_, ','>(node, "queues")?,
+                cmdbufferlevel: try_attribute_sep::<_, ','>(node, "cmdbufferlevel")?,
+                description: try_attribute(node, "description")?,
+                tasks: try_attribute_sep::<_, ','>(node, "tasks")?,
+                videocoding: try_attribute(node, "videocoding")?,
+                renderpass: try_attribute(node, "renderpass")?,
+                comment: try_attribute(node, "comment")?,
             }))
         } else {
             Ok(None)

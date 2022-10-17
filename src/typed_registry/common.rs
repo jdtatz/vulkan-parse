@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     fmt,
+    num::ParseIntError,
     ops::{Deref, DerefMut},
     str::FromStr,
 };
@@ -8,7 +9,7 @@ use std::{
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{get_req_attr, Parse, ParseElements, ParseResult};
+use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Comment<'a>(pub Cow<'a, str>);
@@ -77,7 +78,7 @@ pub struct SemVarVersion {
 }
 
 impl FromStr for SemVarVersion {
-    type Err = <u32 as FromStr>::Err;
+    type Err = ParseIntError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((major_s, s)) = s.split_once('.') {
@@ -114,18 +115,72 @@ impl fmt::Display for SemVarVersion {
     }
 }
 
-impl SemVarVersion {
-    pub fn from_std_str(s: &str) -> Option<Self> {
-        s.strip_prefix("VK_VERSION_")
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct StdVersion {
+    pub major: u32,
+    pub minor: u32,
+}
+
+#[derive(Debug, Clone)]
+pub enum StdVersionParseError {
+    IntParseError(ParseIntError),
+    MissingPrefix,
+    MissingSeperator,
+}
+
+impl From<ParseIntError> for StdVersionParseError {
+    fn from(e: ParseIntError) -> Self {
+        Self::IntParseError(e)
+    }
+}
+
+impl fmt::Display for StdVersionParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StdVersionParseError::IntParseError(_) => {
+                write!(f, "Error while parsing major/minor version number")
+            }
+            StdVersionParseError::MissingPrefix => {
+                write!(f, "Missing \"VK_VERSION_\" or \"VK_API_VERSION_\" prefix")
+            }
+            StdVersionParseError::MissingSeperator => write!(
+                f,
+                "Missing '_' seperator between major and minor version numbers"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for StdVersionParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            StdVersionParseError::IntParseError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl FromStr for StdVersion {
+    type Err = StdVersionParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let ver = s
+            .strip_prefix("VK_VERSION_")
             .or_else(|| s.strip_prefix("VK_API_VERSION_"))
-            .map(|ver| {
-                let (major, minor) = ver.split_once('_').unwrap();
-                SemVarVersion {
-                    major: major.parse().unwrap(),
-                    minor: minor.parse().unwrap(),
-                    patch: None,
-                }
-            })
+            .ok_or(StdVersionParseError::MissingPrefix)?;
+        let (major, minor) = ver
+            .split_once('_')
+            .ok_or(StdVersionParseError::MissingSeperator)?;
+        Ok(StdVersion {
+            major: major.parse()?,
+            minor: minor.parse()?,
+        })
+    }
+}
+
+impl fmt::Display for StdVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "VK_VERSION_{}_{}", self.major, self.minor)
     }
 }
 
@@ -163,11 +218,11 @@ impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
 
 impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for DefinitionOrAlias<'a, T> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(alias) = node.attribute("alias") {
+        if let Some(alias) = try_attribute(node, "alias")? {
             Ok(Some(DefinitionOrAlias::Alias {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                alias: Cow::Borrowed(alias),
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                name: attribute(node, "name")?,
+                alias,
+                comment: try_attribute(node, "comment")?,
             }))
         } else {
             Ok(T::try_parse(node)?.map(DefinitionOrAlias::Definition))

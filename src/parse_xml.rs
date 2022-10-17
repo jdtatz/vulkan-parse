@@ -1,11 +1,11 @@
-use std::fmt;
+use std::{fmt, ops::Deref, str::FromStr};
 
 use roxmltree::{Document, Node, NodeId};
 use serde::Serialize;
 
-use crate::Registry;
+use crate::{Container, Registry, Seperated};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) enum ErrorKind {
     NoMatch(NodeId),
     /// Empty elements are disallowed in vulkan's mixed pseudo-c/xml
@@ -13,6 +13,7 @@ pub(crate) enum ErrorKind {
     MissingAttribute(&'static str, NodeId),
     MissingChildElement(&'static str, NodeId),
     MixedParseError(peg::error::ParseError<usize>, NodeId),
+    AttributeValueError(&'static str, Box<dyn std::error::Error + 'static>, NodeId),
 }
 
 #[derive(Debug)]
@@ -84,6 +85,17 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
                 DocumentLocation(&self.document, *id),
                 e
             ),
+            ErrorKind::AttributeValueError(key, _, id) => write!(
+                f,
+                "Error encountered when parsing Attribute {:?} with value of {:?} in {}",
+                key,
+                self.document
+                    .get_node(*id)
+                    .unwrap()
+                    .attribute(*key)
+                    .unwrap(),
+                DocumentLocation(&self.document, *id)
+            ),
         }
     }
 }
@@ -92,6 +104,7 @@ impl<'d, 'input> std::error::Error for Error<'d, 'input> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             ErrorKind::MixedParseError(e, _) => Some(e),
+            ErrorKind::AttributeValueError(_, e, _) => Some(Box::deref(e)),
             _ => None,
         }
     }
@@ -99,11 +112,76 @@ impl<'d, 'input> std::error::Error for Error<'d, 'input> {
 
 pub(crate) type ParseResult<T> = std::result::Result<T, ErrorKind>;
 
-pub(crate) fn get_req_attr<'a, 'input>(
+// Generic attribute getter with conv
+pub(crate) fn try_attribute<'a, 'input, T: 'a + TryFrom<&'a str>>(
     node: Node<'a, 'input>,
     attr: &'static str,
-) -> ParseResult<&'a str> {
+) -> ParseResult<Option<T>>
+where
+    T::Error: 'static + std::error::Error,
+{
     node.attribute(attr)
+        .map(TryFrom::try_from)
+        .transpose()
+        .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node.id()))
+}
+
+pub(crate) fn attribute<'a, 'input, T: 'a + TryFrom<&'a str>>(
+    node: Node<'a, 'input>,
+    attr: &'static str,
+) -> ParseResult<T>
+where
+    T::Error: 'static + std::error::Error,
+{
+    try_attribute(node, attr)?.ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
+}
+
+// attribute getter+conv for primatives without TryFrom<&'a str>
+pub(crate) fn try_attribute_fs<'a, 'input, T: FromStr>(
+    node: Node<'a, 'input>,
+    attr: &'static str,
+) -> ParseResult<Option<T>>
+where
+    T::Err: 'static + std::error::Error,
+{
+    node.attribute(attr)
+        .map(FromStr::from_str)
+        .transpose()
+        .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node.id()))
+}
+
+pub(crate) fn attribute_fs<'a, 'input, T: FromStr>(
+    node: Node<'a, 'input>,
+    attr: &'static str,
+) -> ParseResult<T>
+where
+    T::Err: 'static + std::error::Error,
+{
+    try_attribute_fs(node, attr)?.ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
+}
+
+// attribute getter+conv for container-like types with a seperator
+pub(crate) fn try_attribute_sep<'a, 'input, V: 'a + Container, const C: char>(
+    node: Node<'a, 'input>,
+    attr: &'static str,
+) -> ParseResult<Option<V>>
+where
+    V::Item: 'a + TryFrom<&'a str>,
+    <V::Item as TryFrom<&'a str>>::Error: 'static + std::error::Error,
+{
+    Ok(try_attribute::<Seperated<_, C>>(node, attr)?.map(Seperated::value))
+}
+
+#[allow(dead_code)]
+pub(crate) fn attribute_sep<'a, 'input, V: 'a + Container, const C: char>(
+    node: Node<'a, 'input>,
+    attr: &'static str,
+) -> ParseResult<V>
+where
+    V::Item: 'a + TryFrom<&'a str>,
+    <V::Item as TryFrom<&'a str>>::Error: 'static + std::error::Error,
+{
+    try_attribute_sep::<V, C>(node, attr)?
         .ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
 }
 
@@ -172,38 +250,54 @@ impl<'a, 'input: 'a, V: ParseElements<'a, 'input>> Parse<'a, 'input> for V {
     }
 }
 
+pub(crate) fn parse_terminated<
+    'a,
+    'input: 'a,
+    V: ParseElements<'a, 'input>,
+    T: Parse<'a, 'input>,
+>(
+    nodes: impl DoubleEndedIterator<Item = Node<'a, 'input>>,
+) -> ParseResult<(V, Option<T>)> {
+    let mut it = nodes.filter(Node::is_element);
+    if let Some(last) = it.next_back() {
+        if let Some(t) = T::try_parse(last)? {
+            Ok((it.map(V::Item::parse).collect::<ParseResult<V>>()?, Some(t)))
+        } else {
+            Ok((
+                it.chain(std::iter::once(last))
+                    .map(V::Item::parse)
+                    .collect::<ParseResult<V>>()?,
+                None,
+            ))
+        }
+    } else {
+        Ok((V::from_iter(std::iter::empty()), None))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct Terminated<V, T>(pub V, pub Option<T>);
+pub(crate) struct Terminated<V, T>(pub V, pub Option<T>);
+
+impl<V, T> Terminated<V, T> {
+    pub fn transform<R>(self, trans: impl FnOnce(V, Option<T>) -> R) -> R {
+        let Self(v, t) = self;
+        trans(v, t)
+    }
+}
 
 impl<'a, 'input: 'a, V: ParseElements<'a, 'input>, T: Parse<'a, 'input>> Parse<'a, 'input>
     for Terminated<V, T>
 where
     <V as ParseElements<'a, 'input>>::NodeIter: DoubleEndedIterator,
 {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+    fn try_parse(_node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         todo!()
     }
 
     fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
         if let Some(nodes) = V::get_nodes(node)? {
-            let mut it = nodes.filter(Node::is_element);
-            if let Some(last) = it.next_back() {
-                if let Some(t) = T::try_parse(last)? {
-                    Ok(Terminated(
-                        it.map(V::Item::parse).collect::<ParseResult<V>>()?,
-                        Some(t),
-                    ))
-                } else {
-                    Ok(Terminated(
-                        it.chain(std::iter::once(last))
-                            .map(V::Item::parse)
-                            .collect::<ParseResult<V>>()?,
-                        None,
-                    ))
-                }
-            } else {
-                Ok(Self(V::from_iter(std::iter::empty()), None))
-            }
+            let (vs, last) = parse_terminated(nodes)?;
+            Ok(Self(vs, last))
         } else {
             Err(ErrorKind::NoMatch(node.id()))
         }

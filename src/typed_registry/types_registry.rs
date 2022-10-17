@@ -9,8 +9,8 @@ use roxmltree::Node;
 use serde::Serialize;
 
 use crate::{
-    c_with_vk_ext, get_req_attr, get_req_text, parse_cexpr, vk_tokenize, ErrorKind, Expression,
-    Parse, ParseResult, Token, TypeSpecifier,
+    attribute, c_with_vk_ext, get_req_text, try_attribute, try_attribute_fs, try_attribute_sep,
+    vk_tokenize, Expression, Parse, ParseResult, Token, TypeSpecifier,
 };
 
 use super::common::*;
@@ -96,8 +96,8 @@ pub enum ExternSyncKind<'a> {
     Fields(Box<[Cow<'a, str>]>),
 }
 
-impl<'a> ExternSyncKind<'a> {
-    fn from_str(s: &'a str) -> Self {
+impl<'a> From<&'a str> for ExternSyncKind<'a> {
+    fn from(s: &'a str) -> Self {
         match s {
             "true" => Self::Value,
             // FIXME split into 
@@ -256,37 +256,12 @@ pub struct HandleType<'a> {
     pub parent: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum HandleKind {
+    #[strum(serialize = "VK_DEFINE_HANDLE")]
     Dispatch,
+    #[strum(serialize = "VK_DEFINE_NON_DISPATCHABLE_HANDLE")]
     NoDispatch,
-}
-
-impl FromStr for HandleKind {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "VK_DEFINE_NON_DISPATCHABLE_HANDLE" => Ok(HandleKind::NoDispatch),
-            "VK_DEFINE_HANDLE" => Ok(HandleKind::Dispatch),
-            #[cfg(debug_assertions)]
-            s => todo!(
-                "Unexpected <type category=\"handle\"><type>...</type> of {:?}",
-                s
-            ),
-            #[cfg(not(debug_assertions))]
-            _ => Err(()),
-        }
-    }
-}
-
-impl fmt::Display for HandleKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            HandleKind::Dispatch => write!(f, "VK_DEFINE_HANDLE"),
-            HandleKind::NoDispatch => write!(f, "VK_DEFINE_NON_DISPATCHABLE_HANDLE"),
-        }
-    }
 }
 
 /// <type category="enum">
@@ -309,7 +284,7 @@ pub struct StructType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
     pub returned_only: Option<bool>,
-    pub struct_extends: Option<Box<[Cow<'a, str>]>>,
+    pub struct_extends: Option<Vec<Cow<'a, str>>>,
     pub allow_duplicate: Option<bool>,
 }
 
@@ -372,7 +347,7 @@ pub struct Member<'a> {
 impl<'a, 'input> Parse<'a, 'input> for Type<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("type") {
-            let category = node.attribute("category");
+            let category = try_attribute(node, "category")?;
             match category {
                 None => RequiresType::parse(node).map(Type::Requires),
                 Some("include") => IncludeType::parse(node).map(Type::Include),
@@ -396,8 +371,8 @@ impl<'a, 'input> Parse<'a, 'input> for Type<'a> {
 impl<'a, 'input> Parse<'a, 'input> for RequiresType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(RequiresType {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-            requires: node.attribute("requires").map(Cow::Borrowed),
+            name: attribute(node, "name")?,
+            requires: try_attribute(node, "requires")?,
         }))
     }
 }
@@ -405,7 +380,7 @@ impl<'a, 'input> Parse<'a, 'input> for RequiresType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(IncludeType {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+            name: attribute(node, "name")?,
             is_local_include: node.text().map(|s| s.contains('"')),
         }))
     }
@@ -414,9 +389,13 @@ impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         let tokens = vk_tokenize(node, true);
-        c_with_vk_ext::type_define(&tokens, node.attribute("name"), node.attribute("requires"))
-            .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
-            .map(Some)
+        c_with_vk_ext::type_define(
+            &tokens,
+            try_attribute(node, "name")?,
+            try_attribute(node, "requires")?,
+        )
+        .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
+        .map(Some)
     }
 }
 
@@ -477,8 +456,8 @@ impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
                     .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
             )?),
             handle_kind: ty_name.parse::<HandleKind>().unwrap(),
-            obj_type_enum: get_req_attr(node, "objtypeenum").map(Cow::Borrowed)?,
-            parent: node.attribute("parent").map(Cow::Borrowed),
+            obj_type_enum: attribute(node, "objtypeenum")?,
+            parent: try_attribute(node, "parent")?,
         }))
     }
 }
@@ -486,7 +465,7 @@ impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for EnumType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(EnumType {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+            name: attribute(node, "name")?,
         }))
     }
 }
@@ -494,7 +473,7 @@ impl<'a, 'input> Parse<'a, 'input> for EnumType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         let tokens = vk_tokenize(node, false);
-        c_with_vk_ext::type_funcptr(&tokens, node.attribute("requires"))
+        c_with_vk_ext::type_funcptr(&tokens, try_attribute(node, "requires")?)
             .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
             .map(Some)
     }
@@ -503,14 +482,10 @@ impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(StructType {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-            returned_only: node.attribute("returnedonly").and_then(|v| v.parse().ok()),
-            struct_extends: node
-                .attribute("structextends")
-                .map(|es| es.split(',').map(Cow::Borrowed).collect()),
-            allow_duplicate: node
-                .attribute("allowduplicate")
-                .and_then(|v| v.parse().ok()),
+            name: attribute(node, "name")?,
+            returned_only: try_attribute_fs(node, "returnedonly")?,
+            struct_extends: try_attribute_sep::<_, ','>(node, "structextends")?,
+            allow_duplicate: try_attribute_fs(node, "allowduplicate")?,
             members: Parse::parse(node)?,
         }))
     }
@@ -519,8 +494,8 @@ impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
 impl<'a, 'input> Parse<'a, 'input> for UnionType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(UnionType {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-            returned_only: node.attribute("returnedonly").and_then(|v| v.parse().ok()),
+            name: attribute(node, "name")?,
+            returned_only: try_attribute_fs(node, "returnedonly")?,
             members: Parse::parse(node)?,
         }))
     }
@@ -531,10 +506,10 @@ impl<'a, 'input> Parse<'a, 'input> for Member<'a> {
         if node.has_tag_name("member") {
             Ok(Some(Member {
                 base: Parse::parse(node)?,
-                selector: node.attribute("selector").and_then(|v| v.parse().ok()),
-                selection: node.attribute("selection").map(Cow::Borrowed),
-                values: node.attribute("values").map(Cow::Borrowed),
-                limit_type: node.attribute("limittype").and_then(|v| v.parse().ok()),
+                selector: try_attribute(node, "selector")?,
+                selection: try_attribute(node, "selection")?,
+                values: try_attribute(node, "values")?,
+                limit_type: try_attribute(node, "limittype")?,
             }))
         } else {
             Ok(None)
@@ -547,10 +522,11 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
         let tokens = vk_tokenize(node, false);
         let f = c_with_vk_ext::field_like(&tokens)
             .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))?;
-        let dynamic_shape = node.attribute("len").and_then(|len| {
+        let dynamic_shape = try_attribute(node, "len")?.and_then(|len: &str| {
             if let Some(latex_expr) = len.strip_prefix("latexmath:") {
-                let c_expr = node.attribute("altlen").expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
-                Some(parse_cexpr(c_expr).map(|c_expr| DynamicShapeKind::Expression {
+                // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
+                let c_expr = attribute(node, "altlen");
+                Some(c_expr.map(|c_expr| DynamicShapeKind::Expression {
                     latex_expr: Cow::Borrowed(latex_expr),
                     c_expr,
                 }))
@@ -587,17 +563,13 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
                     None => DynamicShapeKind::Single(outer),
                 }))
             }
-        }).transpose().map_err(|e| ErrorKind::MixedParseError(e, node.id()))?;
+        }).transpose()?;
         Ok(Some(FieldLike {
             dynamic_shape,
-            extern_sync: node
-                .attribute("externsync")
-                .map(|v| ExternSyncKind::from_str(v)),
-            optional: node.attribute("optional").and_then(|v| v.parse().ok()),
-            no_auto_validity: node
-                .attribute("noautovalidity")
-                .and_then(|v| v.parse().ok()),
-            object_type: node.attribute("objecttype").map(Cow::Borrowed),
+            extern_sync: try_attribute(node, "externsync")?,
+            optional: try_attribute_fs(node, "optional")?,
+            no_auto_validity: try_attribute(node, "noautovalidity")?,
+            object_type: try_attribute(node, "objecttype")?,
             ..f
         }))
     }

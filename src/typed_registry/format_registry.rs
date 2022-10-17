@@ -3,7 +3,7 @@ use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{get_req_attr, Parse, ParseResult};
+use crate::{attribute, attribute_fs, try_attribute, try_attribute_fs, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
@@ -12,7 +12,7 @@ pub struct Format<'a> {
     pub class: Cow<'a, str>,
     pub block_size: NonZeroU8,
     pub texels_per_block: NonZeroU8,
-    pub block_extent: Option<[NonZeroU8; 3]>,
+    pub block_extent: Option<BlockExtent>,
     pub packed: Option<NonZeroU8>,
     pub compressed: Option<FormatCompressionType>,
     pub chroma: Option<FormatChroma>,
@@ -39,6 +39,22 @@ pub enum FormatChild<'a> {
     SpirvImageFormat {
         name: Cow<'a, str>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BlockExtent(NonZeroU8, NonZeroU8, NonZeroU8);
+
+impl FromStr for BlockExtent {
+    type Err = <NonZeroU8 as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((x, rest)) = s.split_once(',') {
+            if let Some((y, z)) = rest.split_once(',') {
+                return Ok(BlockExtent(x.parse()?, y.parse()?, z.parse()?));
+            }
+        }
+        todo!("Unexpected <format blockExtent=...> of {:?}", s);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
@@ -127,32 +143,18 @@ pub enum ComponentName {
     D,
 }
 
-fn block_extent_from_str(s: &str) -> Option<[NonZeroU8; 3]> {
-    if let Some((x, rest)) = s.split_once(',') {
-        if let Some((y, z)) = rest.split_once(',') {
-            return Some([x.parse().unwrap(), y.parse().unwrap(), z.parse().unwrap()]);
-        }
-    }
-    #[cfg(debug_assertions)]
-    todo!("Unexpected <format blockExtent=...> of {:?}", s);
-    #[cfg(not(debug_assertions))]
-    None
-}
-
 impl<'a, 'input> Parse<'a, 'input> for Format<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("format") {
             Ok(Some(Format {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                class: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                block_size: get_req_attr(node, "blockSize")?.parse().unwrap(),
-                texels_per_block: get_req_attr(node, "texelsPerBlock")?.parse().unwrap(),
-                block_extent: node
-                    .attribute("blockExtent")
-                    .and_then(block_extent_from_str),
-                packed: node.attribute("packed").and_then(|v| v.parse().ok()),
-                compressed: node.attribute("compressed").and_then(|v| v.parse().ok()),
-                chroma: node.attribute("chroma").and_then(|v| v.parse().ok()),
+                name: attribute(node, "name")?,
+                class: attribute(node, "name")?,
+                block_size: attribute_fs(node, "blockSize")?,
+                texels_per_block: attribute_fs(node, "texelsPerBlock")?,
+                block_extent: try_attribute_fs(node, "blockExtent")?,
+                packed: try_attribute_fs(node, "packed")?,
+                compressed: try_attribute(node, "compressed")?,
+                chroma: try_attribute(node, "chroma")?,
                 children: Parse::parse(node)?,
             }))
         } else {
@@ -165,19 +167,19 @@ impl<'a, 'input> Parse<'a, 'input> for FormatChild<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "component" => Ok(Some(FormatChild::Component {
-                name: get_req_attr(node, "name")?.parse().unwrap(),
-                bits: get_req_attr(node, "bits")?.parse().unwrap(),
-                numeric_format: get_req_attr(node, "numericFormat")?.parse().unwrap(),
-                plane_index: node.attribute("planeIndex").and_then(|v| v.parse().ok()),
+                name: attribute(node, "name")?,
+                bits: attribute_fs(node, "bits")?,
+                numeric_format: attribute(node, "numericFormat")?,
+                plane_index: try_attribute_fs(node, "planeIndex")?,
             })),
             "plane" => Ok(Some(FormatChild::Plane {
-                index: get_req_attr(node, "index")?.parse().unwrap(),
-                width_divisor: get_req_attr(node, "widthDivisor")?.parse().unwrap(),
-                height_divisor: get_req_attr(node, "heightDivisor")?.parse().unwrap(),
-                compatible: Cow::Borrowed(get_req_attr(node, "index")?),
+                index: attribute_fs(node, "index")?,
+                width_divisor: attribute_fs(node, "widthDivisor")?,
+                height_divisor: attribute_fs(node, "heightDivisor")?,
+                compatible: attribute(node, "index")?,
             })),
             "spirvimageformat" => Ok(Some(FormatChild::SpirvImageFormat {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+                name: attribute(node, "name")?,
             })),
             _ => Ok(None),
         }

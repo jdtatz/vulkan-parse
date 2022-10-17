@@ -3,7 +3,7 @@ use std::{borrow::Cow, fmt};
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult};
+use crate::{attribute, try_attribute, try_attribute_fs, Expression, Parse, ParseResult};
 
 use super::common::*;
 
@@ -11,8 +11,8 @@ use super::common::*;
 pub struct SpirvExtension<'a> {
     pub name: Cow<'a, str>,
     // TODO, usually the only diffrence between `name` & `enable_extension` is the prefix ("SPV_" vs "VK_"), but not always
-    pub enable_extension: Cow<'a, str>,
-    pub enable_version: Option<SemVarVersion>,
+    pub enable_extension: ExtensionEnable<'a>,
+    pub enable_version: Option<VersionEnable>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -31,16 +31,16 @@ pub enum EnableSpirvCapability<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum EnableRequires<'a> {
-    Core(SemVarVersion),
+    Core(StdVersion),
     Extension(Cow<'a, str>),
-    Mix(SemVarVersion, Cow<'a, str>),
+    Mix(StdVersion, Cow<'a, str>),
 }
 
-impl<'a> EnableRequires<'a> {
-    pub fn from_str(s: &'a str) -> Self {
+impl<'a> From<&'a str> for EnableRequires<'a> {
+    fn from(s: &'a str) -> Self {
         if let Some((v, e)) = s.split_once(',') {
-            EnableRequires::Mix(SemVarVersion::from_std_str(v).unwrap(), Cow::Borrowed(e))
-        } else if let Some(v) = SemVarVersion::from_std_str(s) {
+            EnableRequires::Mix(v.parse().unwrap(), Cow::Borrowed(e))
+        } else if let Some(v) = s.parse().ok() {
             EnableRequires::Core(v)
         } else {
             EnableRequires::Extension(Cow::Borrowed(s))
@@ -50,15 +50,15 @@ impl<'a> EnableRequires<'a> {
 impl<'a> fmt::Display for EnableRequires<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EnableRequires::Core(v) => write!(f, "VK_VERSION_{}_{}", v.major, v.minor),
+            EnableRequires::Core(v) => write!(f, "{}", v),
             EnableRequires::Extension(e) => write!(f, "{}", e),
-            EnableRequires::Mix(v, e) => write!(f, "VK_VERSION_{}_{},{}", v.major, v.minor, e),
+            EnableRequires::Mix(v, e) => write!(f, "{},{}", v, e),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct VersionEnable(SemVarVersion);
+pub struct VersionEnable(StdVersion);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExtensionEnable<'a>(Cow<'a, str>);
@@ -86,15 +86,14 @@ impl<'a, 'input> Parse<'a, 'input> for SpirvExtension<'a> {
                 .into_iter()
                 .filter(|n| n.has_tag_name("enable"));
             Ok(Some(SpirvExtension {
-                name: Cow::Borrowed(get_req_attr(node, "name")?),
+                name: (attribute(node, "name")?),
                 enable_extension: it
                     .clone()
-                    .find_map(|n| n.attribute("extension").map(Cow::Borrowed))
-                    .unwrap(),
-                enable_version: it.find_map(|n| {
-                    n.attribute("version")
-                        .map(|v| SemVarVersion::from_std_str(v).unwrap())
-                }),
+                    .find_map(|n| ExtensionEnable::try_parse(n).transpose())
+                    .unwrap()?,
+                enable_version: it
+                    .find_map(|n| VersionEnable::try_parse(n).transpose())
+                    .transpose()?,
             }))
         } else {
             Ok(None)
@@ -106,7 +105,7 @@ impl<'a, 'input> Parse<'a, 'input> for SpirvCapability<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("spirvcapability") {
             Ok(Some(SpirvCapability {
-                name: Cow::Borrowed(get_req_attr(node, "name")?),
+                name: (attribute(node, "name")?),
                 enables: Parse::parse(node)?,
             }))
         } else {
@@ -133,30 +132,23 @@ impl<'a, 'input> Parse<'a, 'input> for EnableSpirvCapability<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for VersionEnable {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(v) = node.attribute("version") {
-            Ok(SemVarVersion::from_std_str(v).map(VersionEnable))
-        } else {
-            Ok(None)
-        }
+        Ok(try_attribute_fs(node, "version")?.map(VersionEnable))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for ExtensionEnable<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(node
-            .attribute("extension")
-            .map(Cow::Borrowed)
-            .map(ExtensionEnable))
+        Ok(try_attribute(node, "extension")?.map(ExtensionEnable))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for StructEnable<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(s) = node.attribute("struct") {
+        if let Some(name) = try_attribute(node, "struct")? {
             Ok(Some(StructEnable {
-                name: Cow::Borrowed(s),
-                feature: Cow::Borrowed(get_req_attr(node, "feature")?),
-                requires: EnableRequires::from_str(get_req_attr(node, "requires")?),
+                name,
+                feature: (attribute(node, "feature")?),
+                requires: (attribute(node, "requires")?),
             }))
         } else {
             Ok(None)
@@ -166,13 +158,12 @@ impl<'a, 'input> Parse<'a, 'input> for StructEnable<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for PropertyEnable<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(s) = node.attribute("property") {
+        if let Some(s) = try_attribute(node, "property")? {
             Ok(Some(PropertyEnable {
                 name: Cow::Borrowed(s),
-                requires: EnableRequires::from_str(get_req_attr(node, "requires")?),
-                member: Cow::Borrowed(get_req_attr(node, "member")?),
-                value: parse_cexpr(get_req_attr(node, "value")?)
-                    .map_err(|e| ErrorKind::MixedParseError(e, node.id()))?,
+                requires: (attribute(node, "requires")?),
+                member: (attribute(node, "member")?),
+                value: attribute(node, "value")?,
             }))
         } else {
             Ok(None)

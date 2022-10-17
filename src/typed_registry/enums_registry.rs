@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{get_req_attr, parse_cexpr, ErrorKind, Expression, Parse, ParseResult, Terminated};
+use crate::{attribute, attribute_fs, try_attribute, Expression, Parse, ParseResult, Terminated};
 
 use super::common::*;
 
@@ -19,7 +19,10 @@ pub enum EnumsValues<'a> {
     /// no type attribute
     Constants(CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>),
     /// type="enum"
-    Enum(Terminated<CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>, UnusedEnum<'a>>),
+    Enum(
+        CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>,
+        Option<UnusedEnum<'a>>,
+    ),
     /// type="bitmask"
     Bitmask(CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>),
 }
@@ -62,8 +65,8 @@ pub struct UnusedEnum<'a> {
 impl<'a, 'input> Parse<'a, 'input> for Enums<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Enums {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-            comment: node.attribute("comment").map(Cow::Borrowed),
+            name: attribute(node, "name")?,
+            comment: try_attribute(node, "comment")?,
             values: Parse::parse(node)?,
         }))
     }
@@ -71,10 +74,10 @@ impl<'a, 'input> Parse<'a, 'input> for Enums<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for EnumsValues<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let ty_attr = node.attribute("type");
+        let ty_attr = try_attribute(node, "type")?;
         match ty_attr {
             None => Ok(Some(Self::Constants(Parse::parse(node)?))),
-            Some("enum") => Ok(Some(Self::Enum(Parse::parse(node)?))),
+            Some("enum") => Ok(Some(Terminated::parse(node)?.transform(Self::Enum))),
             Some("bitmask") => Ok(Some(Self::Bitmask(Parse::parse(node)?))),
             _ => Ok(None),
         }
@@ -85,11 +88,10 @@ impl<'a, 'input> Parse<'a, 'input> for ConstantEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
             Ok(Some(ConstantEnum {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-                type_name: get_req_attr(node, "type").map(Cow::Borrowed)?,
-                value: parse_cexpr(get_req_attr(node, "value")?)
-                    .map_err(|e| ErrorKind::MixedParseError(e, node.id()))?,
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                name: attribute(node, "name")?,
+                type_name: attribute(node, "type")?,
+                value: attribute(node, "value")?,
+                comment: try_attribute(node, "comment")?,
             }))
         } else {
             Ok(None)
@@ -100,7 +102,7 @@ impl<'a, 'input> Parse<'a, 'input> for ConstantEnum<'a> {
 impl<'a, 'input> Parse<'a, 'input> for ValueEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
-            let value = get_req_attr(node, "value")?;
+            let value: &str = attribute(node, "value")?;
             let value = if let Some(hex) = value
                 .strip_prefix("0x")
                 .or_else(|| value.strip_prefix("0X"))
@@ -110,9 +112,9 @@ impl<'a, 'input> Parse<'a, 'input> for ValueEnum<'a> {
                 value.parse().unwrap()
             };
             Ok(Some(ValueEnum {
-                name: get_req_attr(node, "name").map(Cow::Borrowed)?,
+                name: attribute(node, "name")?,
                 value,
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                comment: try_attribute(node, "comment")?,
             }))
         } else {
             Ok(None)
@@ -139,9 +141,9 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskEnum<'a> {
 impl<'a, 'input> Parse<'a, 'input> for BitPosEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(BitPosEnum {
-            name: get_req_attr(node, "name").map(Cow::Borrowed)?,
-            bitpos: get_req_attr(node, "bitpos")?.parse().unwrap(),
-            comment: node.attribute("comment").map(Cow::Borrowed),
+            name: attribute(node, "name")?,
+            bitpos: attribute_fs(node, "bitpos")?,
+            comment: try_attribute(node, "comment")?,
         }))
     }
 }
@@ -149,7 +151,7 @@ impl<'a, 'input> Parse<'a, 'input> for BitPosEnum<'a> {
 impl<'a, 'input> Parse<'a, 'input> for UnusedEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("unused") {
-            let start = get_req_attr(node, "start")?;
+            let start: &str = attribute(node, "start")?;
             let start = if let Some(hex) = start
                 .strip_prefix("0x")
                 .or_else(|| start.strip_prefix("0X"))
@@ -161,7 +163,7 @@ impl<'a, 'input> Parse<'a, 'input> for UnusedEnum<'a> {
 
             Ok(Some(UnusedEnum {
                 start,
-                comment: node.attribute("comment").map(Cow::Borrowed),
+                comment: try_attribute(node, "comment")?,
             }))
         } else {
             Ok(None)

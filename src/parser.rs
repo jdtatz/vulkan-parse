@@ -670,7 +670,11 @@ peg::parser! {
   }
 }
 
-pub(crate) fn parse_cexpr(cexpr: &str) -> Result<Expression, peg::error::ParseError<usize>> {
-    let c_toks = Token::lexer(cexpr).into();
-    c_with_vk_ext::expr(&c_toks)
+impl<'a> TryFrom<&'a str> for Expression<'a> {
+    type Error = peg::error::ParseError<usize>;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        let c_toks = Token::lexer(value).into();
+        c_with_vk_ext::expr(&c_toks)
+    }
 }

@@ -27,3 +27,45 @@ where
     }
     Ok(())
 }
+
+pub(crate) trait Container:
+    IntoIterator + FromIterator<<Self as IntoIterator>::Item>
+{
+}
+impl<T: IntoIterator + FromIterator<<Self as IntoIterator>::Item>> Container for T {}
+
+pub(crate) struct Seperated<V, const C: char>(pub V);
+
+impl<V: Container, const C: char> Seperated<V, C> {
+    pub fn value(self) -> V {
+        self.0
+    }
+}
+
+impl<V: Container, const C: char> FromIterator<V::Item> for Seperated<V, C> {
+    fn from_iter<I: IntoIterator<Item = V::Item>>(iter: I) -> Self {
+        Self(V::from_iter(iter))
+    }
+}
+
+impl<V: Container, const C: char> std::str::FromStr for Seperated<V, C>
+where
+    <V as IntoIterator>::Item: std::str::FromStr,
+{
+    type Err = <V::Item as std::str::FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.split(C).map(V::Item::from_str).collect()
+    }
+}
+
+impl<'a, V: 'a + Container, const C: char> TryFrom<&'a str> for Seperated<V, C>
+where
+    <V as IntoIterator>::Item: TryFrom<&'a str>,
+{
+    type Error = <V::Item as TryFrom<&'a str>>::Error;
+
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        s.split(C).map(V::Item::try_from).collect()
+    }
+}
