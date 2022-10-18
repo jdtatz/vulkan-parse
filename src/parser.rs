@@ -9,8 +9,8 @@ use logos::{Lexer, Logos};
 use serde::Serialize;
 
 use crate::{
-    ArrayLength, Constant, DefineType, DefineTypeValue, FieldLike, FnPtrType, KeepNewLines,
-    PointerKind, Token,
+    ArrayLength, BaseTypeType, Constant, DefineType, DefineTypeValue, ErrorKind, FieldLike,
+    FnPtrType, LexerResultIter, ParseResult, PointerKind, Token, TokenExtras,
 };
 // Using the C grammer from https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1124.pdf
 
@@ -379,26 +379,29 @@ impl<'s, 'a: 's> From<Lexer<'a, Token<'a>>> for VkXMLTokens<'s, 'a> {
 pub(crate) fn vk_tokenize<'s, 'a: 's, 'input>(
     node: roxmltree::Node<'a, 'input>,
     parsing_macros: bool,
-) -> VkXMLTokens<'s, 'a> {
+    objc_compat: bool,
+) -> ParseResult<VkXMLTokens<'s, 'a>> {
     node.children()
         .filter(|n| n.is_element() || n.is_text())
         .flat_map(|n| {
             // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
             let text = n.text().unwrap_or("");
             if n.is_element() {
-                vec![VkXMLToken::TextTag {
+                vec![Ok(VkXMLToken::TextTag {
                     name: Cow::Borrowed(n.tag_name().name()),
                     text: Cow::Borrowed(text),
-                }]
+                })]
             } else {
-                let extras = if parsing_macros {
-                    Some(KeepNewLines)
-                } else {
-                    None
+                let extras = TokenExtras {
+                    keep_new_lines: parsing_macros,
+                    objc_compat,
                 };
-                Lexer::with_extras(text, extras)
+                LexerResultIter::from(Lexer::with_extras(text, extras))
                     .into_iter()
-                    .map(VkXMLToken::C)
+                    .map(|r| {
+                        r.map(VkXMLToken::C)
+                            .map_err(|e| ErrorKind::LexerError(e, n.id()))
+                    })
                     .collect()
             }
         })
@@ -627,6 +630,18 @@ peg::parser! {
                     ..typed
                 }
             }
+
+        /// <type category="basetype"> ... </type>
+        pub rule type_basetype() -> BaseTypeType<'a>
+            = "struct" name:name_tag() ";" { BaseTypeType::Forward(name) }
+            / "typedef" typed:typed_tag(<name_tag()>) ";" { BaseTypeType::TypeDef(typed) }
+            // Workaround because it should be `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;` not `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
+            / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier(i)) if i == "__IOSurface"] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
+                pointer_kind: Some(PointerKind::Single),
+                is_const: false,
+                ..FieldLike::default_new(name, TypeSpecifier::Identifier(TypeIdentifier::Struct(Cow::Borrowed("__IOSurface"))))
+            }) }}
+            / pre:(([VkXMLToken::C(c)] {c.clone()})+) name:name_tag() post:(([VkXMLToken::C(c)] {c.clone()})+) { BaseTypeType::DefineGuarded { pre, name, post } }
 
         /// <type category="define"> ... </type>
         pub rule type_define(name_attr: Option<&'a str>, requires_attr: Option<&'a str>) -> DefineType<'a>

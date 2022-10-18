@@ -3,7 +3,7 @@ use std::{fmt, ops::Deref, str::FromStr};
 use roxmltree::{Document, Node, NodeId};
 use serde::Serialize;
 
-use crate::{Container, Registry, Seperated};
+use crate::{Container, LexerError, Registry, Seperated};
 
 #[derive(Debug)]
 pub(crate) enum ErrorKind {
@@ -12,7 +12,8 @@ pub(crate) enum ErrorKind {
     EmptyElement(NodeId),
     MissingAttribute(&'static str, NodeId),
     MissingChildElement(&'static str, NodeId),
-    MixedParseError(peg::error::ParseError<usize>, NodeId),
+    LexerError(LexerError, NodeId),
+    PegParsingError(peg::error::ParseError<usize>, NodeId),
     AttributeValueError(&'static str, Box<dyn std::error::Error + 'static>, NodeId),
 }
 
@@ -33,6 +34,10 @@ impl<'a, 'input> fmt::Display for DocumentLocation<'a, 'input> {
         for n in ancestors.into_iter().rev() {
             if n.is_root() {
                 continue;
+            }
+            if n.is_text() {
+                write!(f, "/{:?}", n.text().unwrap())?;
+                break;
             }
             write!(f, "/{}", n.tag_name().name())?;
             let attrs = n.attributes();
@@ -79,7 +84,18 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
                 tag,
                 DocumentLocation(&self.document, *id)
             ),
-            ErrorKind::MixedParseError(e, id) => write!(
+            ErrorKind::LexerError(e, id) => {
+                let unk =
+                    &self.document.get_node(*id).unwrap().text().unwrap()[e.span.start..e.span.end];
+                write!(
+                    f,
+                    "Lexer encountered an unexpected token {:?} at {:?} in {}\n",
+                    unk,
+                    e.span,
+                    DocumentLocation(&self.document, *id),
+                )
+            }
+            ErrorKind::PegParsingError(e, id) => write!(
                 f,
                 "Mixed Parsing Error at {}\n{}",
                 DocumentLocation(&self.document, *id),
@@ -103,7 +119,7 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
 impl<'d, 'input> std::error::Error for Error<'d, 'input> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            ErrorKind::MixedParseError(e, _) => Some(e),
+            ErrorKind::PegParsingError(e, _) => Some(e),
             ErrorKind::AttributeValueError(_, e, _) => Some(Box::deref(e)),
             _ => None,
         }

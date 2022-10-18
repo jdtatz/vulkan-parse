@@ -246,15 +246,28 @@ pub enum DefineTypeValue<'a> {
     Code(Box<[Token<'a>]>),
 }
 
-// TODO: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
+// NOTE: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
 //       but should be  `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;`
 /// <type category="basetype">
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BaseTypeType<'a> {
-    pub name: Cow<'a, str>,
-    // FIXME: base_type can be a forward decleration, a simple typedef, or OBJC with define guards
-    pub base_type_name: Option<Cow<'a, str>>,
-    // ...
+pub enum BaseTypeType<'a> {
+    Forward(Cow<'a, str>),
+    TypeDef(FieldLike<'a>),
+    DefineGuarded {
+        pre: Vec<Token<'a>>,
+        name: Cow<'a, str>,
+        post: Vec<Token<'a>>,
+    },
+}
+
+impl<'a> BaseTypeType<'a> {
+    pub fn name(&self) -> &Cow<'a, str> {
+        match self {
+            BaseTypeType::Forward(name) => name,
+            BaseTypeType::TypeDef(typedef) => &typedef.name,
+            BaseTypeType::DefineGuarded { name, .. } => name,
+        }
+    }
 }
 
 /// <type category="bitmask">
@@ -406,31 +419,23 @@ impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, true);
+        let tokens = vk_tokenize(node, true, false)?;
         c_with_vk_ext::type_define(
             &tokens,
             try_attribute(node, "name")?,
             try_attribute(node, "requires")?,
         )
-        .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
+        .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
         .map(Some)
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for BaseTypeType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        // FIXME Fully parse the OBJC with define guards
-        Ok(Some(BaseTypeType {
-            name: Cow::Borrowed(get_req_text(
-                node.first_element_child()
-                    .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
-            )?),
-            base_type_name: node
-                .last_element_child()
-                .filter(|n| n.has_tag_name("type"))
-                .map(|n| get_req_text(n).map(Cow::Borrowed))
-                .transpose()?,
-        }))
+        let tokens = vk_tokenize(node, true, true)?;
+        c_with_vk_ext::type_basetype(&tokens)
+            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
+            .map(Some)
     }
 }
 
@@ -491,9 +496,9 @@ impl<'a, 'input> Parse<'a, 'input> for EnumType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, false);
+        let tokens = vk_tokenize(node, false, false)?;
         c_with_vk_ext::type_funcptr(&tokens, try_attribute(node, "requires")?)
-            .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))
+            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
             .map(Some)
     }
 }
@@ -538,9 +543,9 @@ impl<'a, 'input> Parse<'a, 'input> for Member<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, false);
+        let tokens = vk_tokenize(node, false, false)?;
         let f = c_with_vk_ext::field_like(&tokens)
-            .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))?;
+            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))?;
         let dynamic_shape = try_attribute(node, "len")?
             .map(|len: &str| {
                 Ok(if let Some(latex_expr) = len.strip_prefix("latexmath:") {

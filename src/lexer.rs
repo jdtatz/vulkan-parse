@@ -3,6 +3,50 @@ use std::{borrow::Cow, fmt, str::FromStr};
 use logos::{Lexer, Logos};
 use serde::Serialize;
 
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct LexerError {
+    pub span: core::ops::Range<usize>,
+}
+
+impl fmt::Display for LexerError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "unexpected token at {:?}", self.span)
+    }
+}
+
+impl std::error::Error for LexerError {}
+
+pub struct LexerResultIter<'source, Token: Logos<'source>> {
+    lexer: Lexer<'source, Token>,
+}
+
+impl<'source, Token: Logos<'source>> From<Lexer<'source, Token>>
+    for LexerResultIter<'source, Token>
+{
+    fn from(lexer: Lexer<'source, Token>) -> Self {
+        Self { lexer }
+    }
+}
+
+impl<'source, Token> Iterator for LexerResultIter<'source, Token>
+where
+    Token: Logos<'source> + PartialEq,
+{
+    type Item = Result<Token, LexerError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.lexer.next().map(|token| {
+            if token == Token::ERROR {
+                Err(LexerError {
+                    span: self.lexer.span(),
+                })
+            } else {
+                Ok(token)
+            }
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum Constant {
     Char(u8),
@@ -42,11 +86,32 @@ fn fix_literal(lit: &str) -> Cow<str> {
     Cow::Borrowed(lit)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct KeepNewLines;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenExtras {
+    pub keep_new_lines: bool,
+    pub objc_compat: bool,
+}
+
+impl TokenExtras {
+    fn new_line_filter(&self) -> logos::Filter<()> {
+        if self.keep_new_lines {
+            logos::Filter::Emit(())
+        } else {
+            logos::Filter::Skip
+        }
+    }
+
+    fn objc_is_err(&self) -> logos::FilterResult<()> {
+        if self.objc_compat {
+            logos::FilterResult::Emit(())
+        } else {
+            logos::FilterResult::Error
+        }
+    }
+}
 
 #[derive(Logos, Debug, Clone, PartialEq, Eq, Serialize)]
-#[logos(extras = Option<KeepNewLines>)]
+#[logos(extras = TokenExtras)]
 #[logos(subpattern decimal = r"[1-9][0-9]*")]
 #[logos(subpattern hex = r"[0-9a-fA-F]+")]
 #[logos(subpattern octal = r"[0-7]+")]
@@ -236,9 +301,11 @@ pub enum Token<'a> {
     XorAssign,
     #[token(",")]
     Comma,
+    #[token("@", |lex| lex.extras.objc_is_err())]
+    ObjectiveCAt,
 
     //
-    #[regex(r"\n", |lex| lex.extras.map_or(logos::Filter::Skip, |_| logos::Filter::Emit(())))]
+    #[regex(r"\n", |lex| lex.extras.new_line_filter())]
     NewLine,
     #[regex(r"[ \t\r\f]+", logos::skip)]
     Whitespace,
@@ -362,6 +429,7 @@ impl<'a> Token<'a> {
             "|=" => Some(Token::OrAssign),
             "^=" => Some(Token::XorAssign),
             "," => Some(Token::Comma),
+            "@" => Some(Token::ObjectiveCAt),
             "#" => Some(Token::Pound),
             "##" => Some(Token::DoublePound),
             "\\" => Some(Token::BackSlash),
@@ -463,6 +531,7 @@ impl<'a> Token<'a> {
             Token::OrAssign => Token::OrAssign,
             Token::XorAssign => Token::XorAssign,
             Token::Comma => Token::Comma,
+            Token::ObjectiveCAt => Token::ObjectiveCAt,
             Token::Pound => Token::Pound,
             Token::DoublePound => Token::DoublePound,
             Token::BackSlash => Token::BackSlash,
@@ -561,6 +630,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::OrAssign => write!(f, "|="),
             Token::XorAssign => write!(f, "^="),
             Token::Comma => write!(f, ","),
+            Token::ObjectiveCAt => write!(f, "@"),
             Token::Pound => write!(f, "#"),
             Token::DoublePound => write!(f, "##"),
             Token::BackSlash => write!(f, "\\"),
