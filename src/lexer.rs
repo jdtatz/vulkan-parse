@@ -70,7 +70,7 @@ impl Constant {
         let s = lex.slice();
         let s = s.strip_prefix('L').unwrap_or(s);
         let end = s.len() - 1;
-        Ok(Constant::Char(char::from_str(&s[1..end])? as _))
+        Ok(Constant::Char(char::from_str(&s[1..end])? as u8))
     }
 }
 

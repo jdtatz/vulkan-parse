@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, c_with_vk_ext, get_req_text, try_attribute, try_attribute_fs, try_attribute_sep,
+    attribute, c_with_vk_ext, text_value, try_attribute, try_attribute_fs, try_attribute_sep,
     vk_tokenize, Expression, Parse, ParseResult, Token, TypeSpecifier,
 };
 
@@ -443,11 +443,15 @@ impl<'a, 'input> Parse<'a, 'input> for BaseTypeType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let ty_name = get_req_text(
-            node.first_element_child()
-                .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?,
-        )?;
-        let is_64bits = match ty_name.trim() {
+        let ty_node = node
+            .first_element_child()
+            .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?;
+        let name_node = node
+            .last_element_child()
+            .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?;
+
+        let ty_name = text_value(ty_node)?;
+        let is_64bits = match ty_name {
             "VkFlags" => false,
             "VkFlags64" => true,
             #[cfg(debug_assertions)]
@@ -459,10 +463,7 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
             _ => return Ok(None),
         };
         Ok(Some(BitmaskType {
-            name: Cow::Borrowed(get_req_text(
-                node.last_element_child()
-                    .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
-            )?),
+            name: text_value(name_node)?,
             is_64bits,
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
@@ -472,16 +473,15 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let ty_name = get_req_text(
-            node.first_element_child()
-                .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?,
-        )?;
+        let ty_node = node
+            .first_element_child()
+            .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?;
+        let name_node = node
+            .last_element_child()
+            .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?;
         Ok(Some(HandleType {
-            name: Cow::Borrowed(get_req_text(
-                node.last_element_child()
-                    .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
-            )?),
-            handle_kind: ty_name.parse::<HandleKind>().unwrap(),
+            name: text_value(name_node)?,
+            handle_kind: text_value(ty_node)?,
             obj_type_enum: attribute(node, "objtypeenum")?,
             parent: try_attribute(node, "parent")?,
         }))

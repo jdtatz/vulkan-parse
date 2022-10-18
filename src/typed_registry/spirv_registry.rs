@@ -4,7 +4,10 @@ use roxmltree::Node;
 use serde::Serialize;
 
 use super::common::StdVersion;
-use crate::{attribute, try_attribute, try_attribute_fs, Expression, Parse, ParseResult};
+use crate::{
+    attribute, try_attribute, try_attribute_fs, ErrorKind, Expression, Parse, ParseResult,
+    StdVersionParseError,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpirvExtension<'a> {
@@ -35,15 +38,17 @@ pub enum EnableRequires<'a> {
     Mix(StdVersion, Cow<'a, str>),
 }
 
-impl<'a> From<&'a str> for EnableRequires<'a> {
-    fn from(s: &'a str) -> Self {
-        if let Some((v, e)) = s.split_once(',') {
-            EnableRequires::Mix(v.parse().unwrap(), Cow::Borrowed(e))
+impl<'a> TryFrom<&'a str> for EnableRequires<'a> {
+    type Error = StdVersionParseError;
+
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+        Ok(if let Some((v, e)) = s.split_once(',') {
+            EnableRequires::Mix(v.parse()?, Cow::Borrowed(e))
         } else if let Ok(v) = s.parse() {
             EnableRequires::Core(v)
         } else {
             EnableRequires::Extension(Cow::Borrowed(s))
-        }
+        })
     }
 }
 impl<'a> fmt::Display for EnableRequires<'a> {
@@ -89,7 +94,7 @@ impl<'a, 'input> Parse<'a, 'input> for SpirvExtension<'a> {
                 enable_extension: it
                     .clone()
                     .find_map(|n| ExtensionEnable::try_parse(n).transpose())
-                    .unwrap()?,
+                    .ok_or_else(|| ErrorKind::MissingChildElement("extension", node.id()))??,
                 enable_version: it
                     .find_map(|n| VersionEnable::try_parse(n).transpose())
                     .transpose()?,

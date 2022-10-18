@@ -16,6 +16,7 @@ pub(crate) enum ErrorKind {
     LexerError(LexerError, NodeId),
     PegParsingError(peg::error::ParseError<usize>, NodeId),
     AttributeValueError(&'static str, Box<dyn std::error::Error + 'static>, NodeId),
+    TextValueError(Box<dyn std::error::Error + 'static>, NodeId),
 }
 
 #[derive(Debug)]
@@ -113,6 +114,12 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
                     .unwrap(),
                 DocumentLocation(self.document, *id)
             ),
+            ErrorKind::TextValueError(_, id) => write!(
+                f,
+                "Error encountered when parsing the text {:?} of {}",
+                self.document.get_node(*id).unwrap().text().unwrap(),
+                DocumentLocation(self.document, *id)
+            ),
         }
     }
 }
@@ -196,9 +203,17 @@ where
         .ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
 }
 
-pub(crate) fn get_req_text<'a, 'input>(node: Node<'a, 'input>) -> ParseResult<&'a str> {
+// Generic node text getter with conv
+pub(crate) fn text_value<'a, 'input, T: 'a + TryFrom<&'a str>>(
+    node: Node<'a, 'input>,
+) -> ParseResult<T>
+where
+    T::Error: 'static + std::error::Error,
+{
     node.text()
-        .ok_or_else(|| ErrorKind::EmptyElement(node.id()))
+        .ok_or_else(|| ErrorKind::EmptyElement(node.id()))?
+        .try_into()
+        .map_err(|e| ErrorKind::TextValueError(Box::new(e), node.id()))
 }
 
 pub(crate) trait Parse<'a, 'input>: Sized {

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, num::ParseIntError};
 
 use roxmltree::Node;
 use serde::Serialize;
@@ -98,21 +98,31 @@ impl<'a, 'input> Parse<'a, 'input> for ConstantEnum<'a> {
     }
 }
 
+#[derive(Debug)]
+struct RadixInt(i64);
+
+impl TryFrom<&str> for RadixInt {
+    type Error = ParseIntError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if let Some(hex) = value
+            .strip_prefix("0x")
+            .or_else(|| value.strip_prefix("0X"))
+        {
+            i64::from_str_radix(hex, 16)
+        } else {
+            value.parse()
+        }
+        .map(RadixInt)
+    }
+}
+
 impl<'a, 'input> Parse<'a, 'input> for ValueEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
-            let value: &str = attribute(node, "value")?;
-            let value = if let Some(hex) = value
-                .strip_prefix("0x")
-                .or_else(|| value.strip_prefix("0X"))
-            {
-                i64::from_str_radix(hex, 16).unwrap()
-            } else {
-                value.parse().unwrap()
-            };
             Ok(Some(ValueEnum {
                 name: attribute(node, "name")?,
-                value,
+                value: attribute::<RadixInt>(node, "value")?.0,
                 comment: try_attribute(node, "comment")?,
             }))
         } else {
@@ -150,18 +160,8 @@ impl<'a, 'input> Parse<'a, 'input> for BitPosEnum<'a> {
 impl<'a, 'input> Parse<'a, 'input> for UnusedEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("unused") {
-            let start: &str = attribute(node, "start")?;
-            let start = if let Some(hex) = start
-                .strip_prefix("0x")
-                .or_else(|| start.strip_prefix("0X"))
-            {
-                i64::from_str_radix(hex, 16).unwrap()
-            } else {
-                start.parse().unwrap()
-            };
-
             Ok(Some(UnusedEnum {
-                start,
+                start: attribute::<RadixInt>(node, "start")?.0,
                 comment: try_attribute(node, "comment")?,
             }))
         } else {
