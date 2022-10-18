@@ -8,7 +8,7 @@ use std::{
 use roxmltree::Node;
 use serde::Serialize;
 
-use super::common::*;
+use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
     attribute, c_with_vk_ext, get_req_text, try_attribute, try_attribute_fs, try_attribute_sep,
     vk_tokenize, Expression, Parse, ParseResult, Token, TypeSpecifier,
@@ -164,6 +164,7 @@ pub struct FieldLike<'a> {
 }
 
 impl<'a> FieldLike<'a> {
+    #[must_use]
     pub fn default_new(name: Cow<'a, str>, type_name: TypeSpecifier<'a>) -> Self {
         Self {
             name,
@@ -261,11 +262,12 @@ pub enum BaseTypeType<'a> {
 }
 
 impl<'a> BaseTypeType<'a> {
+    #[must_use]
     pub fn name(&self) -> &Cow<'a, str> {
         match self {
-            BaseTypeType::Forward(name) => name,
-            BaseTypeType::TypeDef(typedef) => &typedef.name,
-            BaseTypeType::DefineGuarded { name, .. } => name,
+            BaseTypeType::Forward(name)
+            | BaseTypeType::TypeDef(FieldLike { name, .. })
+            | BaseTypeType::DefineGuarded { name, .. } => name,
         }
     }
 }

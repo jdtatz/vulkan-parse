@@ -3,7 +3,10 @@ use std::{borrow::Cow, fmt};
 use roxmltree::Node;
 use serde::Serialize;
 
-use super::{common::*, feature_registry::Require};
+use super::{
+    common::{SemVarVersion, StdVersion},
+    feature_registry::Require,
+};
 use crate::{attribute, try_attribute, try_attribute_fs, try_attribute_sep, Parse, ParseResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
@@ -31,7 +34,7 @@ pub enum ExtensionPromotion<'a> {
 
 impl<'a> From<&'a str> for ExtensionPromotion<'a> {
     fn from(s: &'a str) -> Self {
-        if let Some(ver) = s.parse().ok() {
+        if let Ok(ver) = s.parse() {
             Self::Core(ver)
         } else {
             Self::Extension(Cow::Borrowed(s))

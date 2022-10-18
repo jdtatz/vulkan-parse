@@ -9,8 +9,8 @@ use logos::{Lexer, Logos};
 use serde::Serialize;
 
 use crate::{
-    ArrayLength, BaseTypeType, Constant, DefineType, DefineTypeValue, ErrorKind, FieldLike,
-    FnPtrType, LexerResultIter, ParseResult, PointerKind, Token, TokenExtras,
+    lexer::ResultIter as LexerResultIter, ArrayLength, BaseTypeType, Constant, DefineType,
+    DefineTypeValue, ErrorKind, FieldLike, FnPtrType, ParseResult, PointerKind, Token, TokenExtras,
 };
 // Using the C grammer from https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1124.pdf
 

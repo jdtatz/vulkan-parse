@@ -4,16 +4,22 @@ use roxmltree::Node;
 use serde::Serialize;
 
 use super::{
-    commands_registry::*, common::*, enums_registry::*, extension_registry::*, feature_registry::*,
-    format_registry::*, spirv_registry::*, types_registry::*,
+    commands_registry::Command,
+    common::{CommentendChildren, DefinitionOrAlias, MaybeComment},
+    enums_registry::Enums,
+    extension_registry::{Extension, PseudoExtension},
+    feature_registry::Feature,
+    format_registry::Format,
+    spirv_registry::{SpirvCapability, SpirvExtension},
+    types_registry::Type,
 };
 use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Registry<'a>(pub CommentendChildren<'a, RegistryChild<'a>>);
+pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub enum RegistryChild<'a> {
+pub enum Items<'a> {
     Platforms(Box<[Platform<'a>]>, Option<Cow<'a, str>>),
     Tags(Box<[Tag<'a>]>, Option<Cow<'a, str>>),
     Types(CommentendChildren<'a, Type<'a>>, Option<Cow<'a, str>>),
@@ -49,14 +55,14 @@ pub enum WrappedExtension<'a> {
     PseudoExtension(PseudoExtension<'a>),
 }
 
-impl<'a> FromIterator<MaybeComment<'a, RegistryChild<'a>>> for Registry<'a> {
-    fn from_iter<T: IntoIterator<Item = MaybeComment<'a, RegistryChild<'a>>>>(iter: T) -> Self {
+impl<'a> FromIterator<MaybeComment<'a, Items<'a>>> for Registry<'a> {
+    fn from_iter<T: IntoIterator<Item = MaybeComment<'a, Items<'a>>>>(iter: T) -> Self {
         Self(CommentendChildren(iter.into_iter().collect()))
     }
 }
 
 impl<'a, 'input: 'a> ParseElements<'a, 'input> for Registry<'a> {
-    type Item = MaybeComment<'a, RegistryChild<'a>>;
+    type Item = MaybeComment<'a, Items<'a>>;
 
     type NodeIter = roxmltree::Children<'a, 'input>;
 
@@ -69,37 +75,37 @@ impl<'a, 'input: 'a> ParseElements<'a, 'input> for Registry<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for RegistryChild<'a> {
+impl<'a, 'input> Parse<'a, 'input> for Items<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
-            "platforms" => Ok(Some(RegistryChild::Platforms(
+            "platforms" => Ok(Some(Items::Platforms(
                 Box::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
-            "tags" => Ok(Some(RegistryChild::Tags(
+            "tags" => Ok(Some(Items::Tags(
                 Box::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
-            "types" => Ok(Some(RegistryChild::Types(
+            "types" => Ok(Some(Items::Types(
                 CommentendChildren::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
-            "enums" => Ok(Some(RegistryChild::Enums(Parse::parse(node)?))),
-            "commands" => Ok(Some(RegistryChild::Commands(
+            "enums" => Ok(Some(Items::Enums(Parse::parse(node)?))),
+            "commands" => Ok(Some(Items::Commands(
                 Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
-            "feature" => Ok(Some(RegistryChild::Features(Parse::parse(node)?))),
-            "extensions" => Ok(Some(RegistryChild::Extensions(
+            "feature" => Ok(Some(Items::Features(Parse::parse(node)?))),
+            "extensions" => Ok(Some(Items::Extensions(
                 Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
-            "formats" => Ok(Some(RegistryChild::Formats(Parse::parse(node)?))),
-            "spirvextensions" => Ok(Some(RegistryChild::SpirvExtensions(
+            "formats" => Ok(Some(Items::Formats(Parse::parse(node)?))),
+            "spirvextensions" => Ok(Some(Items::SpirvExtensions(
                 Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
-            "spirvcapabilities" => Ok(Some(RegistryChild::SpirvCapabilities(
+            "spirvcapabilities" => Ok(Some(Items::SpirvCapabilities(
                 Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),

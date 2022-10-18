@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use roxmltree::Node;
 use serde::Serialize;
 
-use super::common::*;
+use super::common::{CommentendChildren, SemVarVersion};
 use crate::{
     attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
 };

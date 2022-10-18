@@ -1,6 +1,7 @@
-use std::{fmt, ops::Deref, str::FromStr};
+use std::{fmt, str::FromStr};
 
-use roxmltree::{Document, Node, NodeId};
+pub use roxmltree::Document;
+use roxmltree::{Node, NodeId};
 use serde::Serialize;
 
 use crate::{Container, LexerError, Registry, Seperated};
@@ -65,40 +66,40 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
             ErrorKind::NoMatch(id) => write!(
                 f,
                 "No Match found at {}",
-                DocumentLocation(&self.document, *id)
+                DocumentLocation(self.document, *id)
             ),
             ErrorKind::EmptyElement(id) => write!(
                 f,
                 "Empty elements are disallowed in vulkan's mixed pseudo-c/xml, at {}",
-                DocumentLocation(&self.document, *id)
+                DocumentLocation(self.document, *id)
             ),
             ErrorKind::MissingAttribute(key, id) => write!(
                 f,
                 "Attribute {:?} not found in {}",
                 key,
-                DocumentLocation(&self.document, *id)
+                DocumentLocation(self.document, *id)
             ),
             ErrorKind::MissingChildElement(tag, id) => write!(
                 f,
                 "No child with the tag-name {:?} was found at {}",
                 tag,
-                DocumentLocation(&self.document, *id)
+                DocumentLocation(self.document, *id)
             ),
             ErrorKind::LexerError(e, id) => {
                 let unk =
                     &self.document.get_node(*id).unwrap().text().unwrap()[e.span.start..e.span.end];
-                write!(
+                writeln!(
                     f,
-                    "Lexer encountered an unexpected token {:?} at {:?} in {}\n",
+                    "Lexer encountered an unexpected token {:?} at {:?} in {}",
                     unk,
                     e.span,
-                    DocumentLocation(&self.document, *id),
+                    DocumentLocation(self.document, *id),
                 )
             }
             ErrorKind::PegParsingError(e, id) => write!(
                 f,
                 "Mixed Parsing Error at {}\n{}",
-                DocumentLocation(&self.document, *id),
+                DocumentLocation(self.document, *id),
                 e
             ),
             ErrorKind::AttributeValueError(key, _, id) => write!(
@@ -110,7 +111,7 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
                     .unwrap()
                     .attribute(*key)
                     .unwrap(),
-                DocumentLocation(&self.document, *id)
+                DocumentLocation(self.document, *id)
             ),
         }
     }
@@ -120,7 +121,7 @@ impl<'d, 'input> std::error::Error for Error<'d, 'input> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             ErrorKind::PegParsingError(e, _) => Some(e),
-            ErrorKind::AttributeValueError(_, e, _) => Some(Box::deref(e)),
+            ErrorKind::AttributeValueError(_, e, _) => Some(&**e),
             _ => None,
         }
     }
@@ -153,10 +154,7 @@ where
 }
 
 // attribute getter+conv for primatives without TryFrom<&'a str>
-pub(crate) fn try_attribute_fs<'a, 'input, T: FromStr>(
-    node: Node<'a, 'input>,
-    attr: &'static str,
-) -> ParseResult<Option<T>>
+pub(crate) fn try_attribute_fs<T: FromStr>(node: Node, attr: &'static str) -> ParseResult<Option<T>>
 where
     T::Err: 'static + std::error::Error,
 {
@@ -166,10 +164,7 @@ where
         .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node.id()))
 }
 
-pub(crate) fn attribute_fs<'a, 'input, T: FromStr>(
-    node: Node<'a, 'input>,
-    attr: &'static str,
-) -> ParseResult<T>
+pub(crate) fn attribute_fs<T: FromStr>(node: Node, attr: &'static str) -> ParseResult<T>
 where
     T::Err: 'static + std::error::Error,
 {
@@ -287,7 +282,7 @@ pub(crate) fn parse_terminated<
             ))
         }
     } else {
-        Ok((V::from_iter(std::iter::empty()), None))
+        Ok((std::iter::empty().collect(), None))
     }
 }
 
@@ -320,21 +315,11 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct XMLDocument<'input>(Document<'input>);
-
-impl<'input> XMLDocument<'input> {
-    pub fn new(xml: &'input str) -> Result<Self, roxmltree::Error> {
-        Ok(XMLDocument(Document::parse(xml)?))
-    }
-
-    pub fn parse<'a>(&'a self) -> Result<Registry<'a>, Error<'a, 'input>> {
-        let root = self.0.root_element();
-        Registry::parse(root).map_err(|kind| Error {
-            kind,
-            document: &self.0,
-        })
-    }
+pub fn parse_registry<'a, 'input: 'a>(
+    document: &'a Document<'input>,
+) -> Result<Registry<'a>, Error<'a, 'input>> {
+    let root = document.root_element();
+    Registry::parse(root).map_err(|kind| Error { kind, document })
 }
 
 // Generic Impls

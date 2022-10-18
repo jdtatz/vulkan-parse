@@ -1,43 +1,41 @@
-use std::{borrow::Cow, fmt, str::FromStr};
+use std::{borrow::Cow, fmt, ops::Range, str::FromStr};
 
 use logos::{Lexer, Logos};
 use serde::Serialize;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
-pub struct LexerError {
-    pub span: core::ops::Range<usize>,
+pub struct Error {
+    pub span: Range<usize>,
 }
 
-impl fmt::Display for LexerError {
+impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "unexpected token at {:?}", self.span)
     }
 }
 
-impl std::error::Error for LexerError {}
+impl std::error::Error for Error {}
 
-pub struct LexerResultIter<'source, Token: Logos<'source>> {
+pub struct ResultIter<'source, Token: Logos<'source>> {
     lexer: Lexer<'source, Token>,
 }
 
-impl<'source, Token: Logos<'source>> From<Lexer<'source, Token>>
-    for LexerResultIter<'source, Token>
-{
+impl<'source, Token: Logos<'source>> From<Lexer<'source, Token>> for ResultIter<'source, Token> {
     fn from(lexer: Lexer<'source, Token>) -> Self {
         Self { lexer }
     }
 }
 
-impl<'source, Token> Iterator for LexerResultIter<'source, Token>
+impl<'source, Token> Iterator for ResultIter<'source, Token>
 where
     Token: Logos<'source> + PartialEq,
 {
-    type Item = Result<Token, LexerError>;
+    type Item = Result<Token, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.lexer.next().map(|token| {
             if token == Token::ERROR {
-                Err(LexerError {
+                Err(Error {
                     span: self.lexer.span(),
                 })
             } else {
@@ -93,7 +91,7 @@ pub struct TokenExtras {
 }
 
 impl TokenExtras {
-    fn new_line_filter(&self) -> logos::Filter<()> {
+    fn new_line_filter(self) -> logos::Filter<()> {
         if self.keep_new_lines {
             logos::Filter::Emit(())
         } else {
@@ -101,7 +99,7 @@ impl TokenExtras {
         }
     }
 
-    fn objc_is_err(&self) -> logos::FilterResult<()> {
+    fn objc_is_err(self) -> logos::FilterResult<()> {
         if self.objc_compat {
             logos::FilterResult::Emit(())
         } else {
@@ -344,6 +342,7 @@ pub enum Token<'a> {
 }
 
 impl<'a> Token<'a> {
+    #[must_use]
     pub fn from_literal(s: &str) -> Option<Self> {
         match s {
             "auto" => Some(Token::Auto),
@@ -441,6 +440,7 @@ impl<'a> Token<'a> {
         }
     }
 
+    #[must_use]
     pub fn into_owned(self) -> Token<'static> {
         match self {
             Token::Identifier(id) => Token::Identifier(Cow::Owned(id.into_owned())),
@@ -545,6 +545,7 @@ impl<'a> Token<'a> {
 }
 
 impl<'a> fmt::Display for Token<'a> {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Auto => write!(f, "auto"),
@@ -635,13 +636,13 @@ impl<'a> fmt::Display for Token<'a> {
             Token::DoublePound => write!(f, "##"),
             Token::BackSlash => write!(f, "\\"),
             Token::_MalformedDefine => write!(f, "//#define"),
-            Token::NewLine => write!(f, "\n"),
+            Token::NewLine => writeln!(f),
             Token::Whitespace => write!(f, " "),
-            Token::Comment => write!(f, "//\n"),
+            Token::Comment => writeln!(f, "//"),
             Token::Identifier(id) => write!(f, "{}", id),
             Token::Constant(c) => write!(f, "{}", c),
             Token::Literal(lit) => {
-                let lit: &str = &*lit;
+                let lit: &str = lit;
                 // FIXME
                 write!(f, "{:?}", lit)
             }
@@ -660,6 +661,6 @@ mod tests {
     #[test]
     fn test_float_constants() {
         let tokens = Token::lexer("1000.0F").into_iter().collect::<Vec<_>>();
-        assert_eq!(tokens, &[Token::Constant(Constant::Float(1000.0))])
+        assert_eq!(tokens, &[Token::Constant(Constant::Float(1000.0))]);
     }
 }

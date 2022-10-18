@@ -3,7 +3,7 @@ use std::{borrow::Cow, fmt};
 use roxmltree::Node;
 use serde::Serialize;
 
-use super::common::*;
+use super::common::StdVersion;
 use crate::{attribute, try_attribute, try_attribute_fs, Expression, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -39,7 +39,7 @@ impl<'a> From<&'a str> for EnableRequires<'a> {
     fn from(s: &'a str) -> Self {
         if let Some((v, e)) = s.split_once(',') {
             EnableRequires::Mix(v.parse().unwrap(), Cow::Borrowed(e))
-        } else if let Some(v) = s.parse().ok() {
+        } else if let Ok(v) = s.parse() {
             EnableRequires::Core(v)
         } else {
             EnableRequires::Extension(Cow::Borrowed(s))

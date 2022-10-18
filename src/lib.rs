@@ -1,9 +1,17 @@
+#![warn(clippy::all, clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+
 mod lexer;
 mod parse_xml;
 mod parser;
 mod typed_registry;
 
-pub use crate::{lexer::*, parse_xml::*, parser::*, typed_registry::*};
+pub use crate::{
+    lexer::{Constant, Error as LexerError, Token, TokenExtras},
+    parse_xml::*,
+    parser::*,
+    typed_registry::*,
+};
 
 pub(crate) fn fmt_write_interspersed<I: Iterator, S: ?Sized + std::fmt::Display>(
     f: &mut std::fmt::Formatter,
