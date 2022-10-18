@@ -3,20 +3,11 @@ use std::borrow::Cow;
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::attribute;
-use crate::try_attribute;
-use crate::Parse;
-use crate::ParseElements;
-use crate::ParseResult;
-
-use super::commands_registry::*;
-use super::common::*;
-use super::enums_registry::*;
-use super::extension_registry::*;
-use super::feature_registry::*;
-use super::format_registry::*;
-use super::spirv_registry::*;
-use super::types_registry::*;
+use super::{
+    commands_registry::*, common::*, enums_registry::*, extension_registry::*, feature_registry::*,
+    format_registry::*, spirv_registry::*, types_registry::*,
+};
+use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Registry<'a>(pub CommentendChildren<'a, RegistryChild<'a>>);

@@ -1,6 +1,9 @@
-use ron::extensions::Extensions;
-use ron::ser::{to_writer_pretty, PrettyConfig};
 use std::fs;
+
+use ron::{
+    extensions::Extensions,
+    ser::{to_writer_pretty, PrettyConfig},
+};
 use vulkan_parse::*;
 
 fn write_registry(name: &str, reg: &Registry) {

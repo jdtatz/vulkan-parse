@@ -3,9 +3,8 @@ use std::{borrow::Cow, fmt};
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{attribute, try_attribute, try_attribute_fs, Expression, Parse, ParseResult};
-
 use super::common::*;
+use crate::{attribute, try_attribute, try_attribute_fs, Expression, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpirvExtension<'a> {
@@ -158,9 +157,9 @@ impl<'a, 'input> Parse<'a, 'input> for StructEnable<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for PropertyEnable<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(s) = try_attribute(node, "property")? {
+        if let Some(name) = try_attribute(node, "property")? {
             Ok(Some(PropertyEnable {
-                name: Cow::Borrowed(s),
+                name,
                 requires: (attribute(node, "requires")?),
                 member: (attribute(node, "member")?),
                 value: attribute(node, "value")?,

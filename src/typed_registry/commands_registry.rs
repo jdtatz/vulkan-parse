@@ -3,24 +3,23 @@ use std::{borrow::Cow, fmt};
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
-
 use super::FieldLike;
+use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Command<'a> {
     pub proto: FieldLike<'a>,
     pub params: Box<[CommandParam<'a>]>,
 
-    pub successcodes: Option<SuccessCodes<'a>>,
-    pub errorcodes: Option<Vec<Cow<'a, str>>>,
+    pub success_codes: Option<SuccessCodes<'a>>,
+    pub error_codes: Option<Vec<Cow<'a, str>>>,
 
     pub queues: Option<enumflags2::BitFlags<Queue>>,
-    pub cmdbufferlevel: Option<enumflags2::BitFlags<CommandBufferLevel>>,
+    pub cmd_buffer_level: Option<enumflags2::BitFlags<CommandBufferLevel>>,
     pub description: Option<Cow<'a, str>>,
-    pub implicitexternsyncparams: Option<ImplicitExternSyncParams<'a>>,
+    pub implicit_extern_sync_params: Option<ImplicitExternSyncParams<'a>>,
     pub tasks: Option<enumflags2::BitFlags<Task>>,
-    pub videocoding: Option<VideoCoding>,
+    pub video_coding: Option<VideoCoding>,
     pub renderpass: Option<Renderpass>,
     pub comment: Option<Cow<'a, str>>,
 }
@@ -28,7 +27,7 @@ pub struct Command<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommandParam<'a> {
     pub base: FieldLike<'a>,
-    pub validstructs: Option<Vec<Cow<'a, str>>>,
+    pub valid_structs: Option<Vec<Cow<'a, str>>>,
     pub stride: Option<Cow<'a, str>>,
 }
 
@@ -42,21 +41,21 @@ pub struct ImplicitExternSyncParams<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum Queue {
     #[strum(serialize = "graphics")]
-    GRAPHICS,
+    Graphics,
     #[strum(serialize = "compute")]
-    COMPUTE,
+    Compute,
     #[strum(serialize = "transfer")]
-    TRANSFER,
+    Transfer,
     #[strum(serialize = "sparse_binding")]
-    SPARSE_BINDING,
+    SparseBinding,
     #[strum(serialize = "protected")]
-    PROTECTED,
+    Protected,
     #[strum(serialize = "decode")]
-    VIDEO_DECODE,
+    VideoDecode,
     #[strum(serialize = "encode")]
-    VIDEO_ENCODE,
+    VideoEncode,
     #[strum(serialize = "opticalflow")]
-    OPTICAL_FLOW,
+    OpticalFlow,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -120,13 +119,13 @@ pub enum CommandBufferLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum Task {
     #[strum(serialize = "action")]
-    ACTION,
+    Action,
     #[strum(serialize = "state")]
-    STATE,
+    State,
     #[strum(serialize = "synchronization")]
-    SYNCHRONIZATION,
+    Synchronization,
     #[strum(serialize = "indirection")]
-    INDIRECTION,
+    Indirection,
 }
 
 impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {
@@ -134,7 +133,7 @@ impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {
         if node.has_tag_name("param") {
             Ok(Some(CommandParam {
                 base: Parse::parse(node)?,
-                validstructs: try_attribute_sep::<_, ','>(node, "validstructs")?,
+                valid_structs: try_attribute_sep::<_, ','>(node, "validstructs")?,
                 stride: try_attribute(node, "stride")?,
             }))
         } else {
@@ -168,18 +167,18 @@ impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
                 .filter(|n| n.has_tag_name("proto"))
                 .ok_or_else(|| ErrorKind::MissingChildElement("proto", node.id()))?;
             let proto = Parse::parse(proto_node)?;
-            let (params, implicitexternsyncparams) = crate::parse_terminated(it)?;
+            let (params, implicit_extern_sync_params) = crate::parse_terminated(it)?;
             Ok(Some(Command {
                 proto,
                 params,
-                implicitexternsyncparams,
-                successcodes: try_attribute(node, "returnedonly")?,
-                errorcodes: try_attribute_sep::<_, ','>(node, "errorcodes")?,
+                implicit_extern_sync_params,
+                success_codes: try_attribute(node, "successcodes")?,
+                error_codes: try_attribute_sep::<_, ','>(node, "errorcodes")?,
                 queues: try_attribute_sep::<_, ','>(node, "queues")?,
-                cmdbufferlevel: try_attribute_sep::<_, ','>(node, "cmdbufferlevel")?,
+                cmd_buffer_level: try_attribute_sep::<_, ','>(node, "cmdbufferlevel")?,
                 description: try_attribute(node, "description")?,
                 tasks: try_attribute_sep::<_, ','>(node, "tasks")?,
-                videocoding: try_attribute(node, "videocoding")?,
+                video_coding: try_attribute(node, "videocoding")?,
                 renderpass: try_attribute(node, "renderpass")?,
                 comment: try_attribute(node, "comment")?,
             }))

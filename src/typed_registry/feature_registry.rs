@@ -3,11 +3,10 @@ use std::borrow::Cow;
 use roxmltree::Node;
 use serde::Serialize;
 
+use super::common::*;
 use crate::{
     attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
 };
-
-use super::common::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum FeatureApi {

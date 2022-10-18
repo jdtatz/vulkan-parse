@@ -1,6 +1,7 @@
+use std::{borrow::Cow, fmt, str::FromStr};
+
 use logos::{Lexer, Logos};
 use serde::Serialize;
-use std::{borrow::Cow, fmt, str::FromStr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum Constant {

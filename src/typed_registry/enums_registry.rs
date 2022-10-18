@@ -3,9 +3,8 @@ use std::borrow::Cow;
 use roxmltree::Node;
 use serde::Serialize;
 
-use crate::{attribute, attribute_fs, try_attribute, Expression, Parse, ParseResult, Terminated};
-
 use super::common::*;
+use crate::{attribute, attribute_fs, try_attribute, Expression, Parse, ParseResult, Terminated};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Enums<'a> {

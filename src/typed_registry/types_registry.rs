@@ -8,12 +8,11 @@ use std::{
 use roxmltree::Node;
 use serde::Serialize;
 
+use super::common::*;
 use crate::{
     attribute, c_with_vk_ext, get_req_text, try_attribute, try_attribute_fs, try_attribute_sep,
     vk_tokenize, Expression, Parse, ParseResult, Token, TypeSpecifier,
 };
-
-use super::common::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum PointerKind {
@@ -37,6 +36,25 @@ pub enum DynamicLength<'a> {
         parameter: Cow<'a, str>,
         field: Cow<'a, str>,
     },
+}
+
+impl<'a> From<&'a str> for DynamicLength<'a> {
+    fn from(v: &'a str) -> Self {
+        if v == "null-terminated" {
+            DynamicLength::NullTerminated
+        } else if let Ok(n) = v.parse() {
+            DynamicLength::Static(n)
+        } else if let Some((parameter, field)) =
+            v.split_once("->").or_else(|| v.split_once("-&gt;"))
+        {
+            DynamicLength::ParameterizedField {
+                parameter: Cow::Borrowed(parameter),
+                field: Cow::Borrowed(field),
+            }
+        } else {
+            DynamicLength::Parameterized(Cow::Borrowed(v))
+        }
+    }
 }
 
 impl<'a> fmt::Display for DynamicLength<'a> {
@@ -439,6 +457,7 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
                     .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?,
             )?),
             is_64bits,
+            //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
         }))
     }
@@ -522,48 +541,22 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
         let tokens = vk_tokenize(node, false);
         let f = c_with_vk_ext::field_like(&tokens)
             .map_err(|e| crate::ErrorKind::MixedParseError(e, node.id()))?;
-        let dynamic_shape = try_attribute(node, "len")?.and_then(|len: &str| {
-            if let Some(latex_expr) = len.strip_prefix("latexmath:") {
-                // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
-                let c_expr = attribute(node, "altlen");
-                Some(c_expr.map(|c_expr| DynamicShapeKind::Expression {
-                    latex_expr: Cow::Borrowed(latex_expr),
-                    c_expr,
-                }))
-            } else {
-                let mut it = len.split(',').map(|v| {
-                    if v == "null-terminated" {
-                        DynamicLength::NullTerminated
-                    } else if let Ok(n) = v.parse() {
-                        DynamicLength::Static(n)
-                    } else if let Some((parameter, field)) = v.split_once("->").or_else(|| v.split_once("-&gt;")) {
-                        DynamicLength::ParameterizedField {
-                            parameter: Cow::Borrowed(parameter),
-                            field: Cow::Borrowed(field),
-                        }
-                    } else {
-                        DynamicLength::Parameterized(Cow::Borrowed(v))
+        let dynamic_shape = try_attribute(node, "len")?
+            .map(|len: &str| {
+                Ok(if let Some(latex_expr) = len.strip_prefix("latexmath:") {
+                    // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
+                    let c_expr = attribute(node, "altlen")?;
+                    DynamicShapeKind::Expression {
+                        latex_expr: Cow::Borrowed(latex_expr),
+                        c_expr,
                     }
-                });
-                let outer = it.next().expect("The `len` attribute must not be empty");
-                Some(Ok(match it.next() {
-                    Some(inner) => {
-                        let n = it.count();
-                        if n != 0 {
-                            #[cfg(debug_assertions)]
-                            todo!(
-                                "Expected only 1 or 2 comma-seperated values in the `len` attribute, found {} values",
-                                2 + n
-                            );
-                            #[cfg(not(debug_assertions))]
-                            return None;
-                        }
-                        DynamicShapeKind::Double(outer, inner)
-                    }
-                    None => DynamicShapeKind::Single(outer),
-                }))
-            }
-        }).transpose()?;
+                } else if let Some((l1, l2)) = len.split_once(',') {
+                    DynamicShapeKind::Double(l1.into(), l2.into())
+                } else {
+                    DynamicShapeKind::Single(len.into())
+                })
+            })
+            .transpose()?;
         Ok(Some(FieldLike {
             dynamic_shape,
             extern_sync: try_attribute(node, "externsync")?,

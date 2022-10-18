@@ -72,22 +72,20 @@ pub enum FormatChroma {
 
 pub enum FormatCompressionType {
     #[strum(serialize = "BC")]
-    BC,
+    Bc,
     #[strum(serialize = "ETC2")]
-    ETC2,
+    Etc2,
     #[strum(serialize = "EAC")]
-    EAC,
+    Eac,
     // FIXME I'm really not sure what else to name these
     /// Adaptive Scalable Texture Compression (ASTC) Low Dynamic Range (LDR)
-    #[allow(non_camel_case_types)]
     #[strum(serialize = "ASTC LDR")]
-    ASTC_LDR,
+    AstcLdr,
     /// Adaptive Scalable Texture Compression (ASTC) High Dynamic Range (HDR)
-    #[allow(non_camel_case_types)]
     #[strum(serialize = "ASTC HDR")]
-    ASTC_HDR,
+    AstcHdr,
     #[strum(serialize = "PVRTC")]
-    PVRTC,
+    Pvrtc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -148,7 +146,7 @@ impl<'a, 'input> Parse<'a, 'input> for Format<'a> {
         if node.has_tag_name("format") {
             Ok(Some(Format {
                 name: attribute(node, "name")?,
-                class: attribute(node, "name")?,
+                class: attribute(node, "class")?,
                 block_size: attribute_fs(node, "blockSize")?,
                 texels_per_block: attribute_fs(node, "texelsPerBlock")?,
                 block_extent: try_attribute_fs(node, "blockExtent")?,
@@ -176,7 +174,7 @@ impl<'a, 'input> Parse<'a, 'input> for FormatChild<'a> {
                 index: attribute_fs(node, "index")?,
                 width_divisor: attribute_fs(node, "widthDivisor")?,
                 height_divisor: attribute_fs(node, "heightDivisor")?,
-                compatible: attribute(node, "index")?,
+                compatible: attribute(node, "compatible")?,
             })),
             "spirvimageformat" => Ok(Some(FormatChild::SpirvImageFormat {
                 name: attribute(node, "name")?,
