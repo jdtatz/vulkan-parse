@@ -679,9 +679,9 @@ peg::parser! {
         /// <type category="funcptr"> ... </type>
         pub rule type_funcptr(requires_attr: Option<&'a str>) -> FnPtrType<'a>
           = "typedef" ty_name:type_specifier() ptr:"*"? "(" vkapi_ptr_macro() "*" name:name_tag() ")" "(" params:(
-            "void" ")" ";" { Vec::new() }
-            / params:(typed_tag(<identifier()>) ** ",") ")" ";" { params }
-          ) { FnPtrType { name_and_return: FieldLike { pointer_kind: ptr.map(|()| PointerKind::Single), ..FieldLike::default_new(name, ty_name) }, params: params.into_boxed_slice(), requires: requires_attr.map(Cow::Borrowed) } }
+            "void" ")" ";" { None }
+            / params:(typed_tag(<identifier()>) ** ",") ")" ";" { Some(params) }
+          ) { FnPtrType { name_and_return: FieldLike { pointer_kind: ptr.map(|()| PointerKind::Single), ..FieldLike::default_new(name, ty_name) }, params, requires: requires_attr.map(Cow::Borrowed) } }
   }
 }
 

@@ -57,6 +57,13 @@ impl FromStr for BlockExtent {
     }
 }
 
+impl fmt::Display for BlockExtent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let BlockExtent(x, y, z) = self;
+        write!(f, "{},{},{}", x, y, z)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 
 pub enum FormatChroma {

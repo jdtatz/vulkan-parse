@@ -20,7 +20,7 @@ pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Items<'a> {
-    Platforms(Box<[Platform<'a>]>, Option<Cow<'a, str>>),
+    Platforms(Vec<Platform<'a>>, Option<Cow<'a, str>>),
     Tags(Box<[Tag<'a>]>, Option<Cow<'a, str>>),
     Types(CommentendChildren<'a, Type<'a>>, Option<Cow<'a, str>>),
     Enums(Enums<'a>),
@@ -79,15 +79,15 @@ impl<'a, 'input> Parse<'a, 'input> for Items<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "platforms" => Ok(Some(Items::Platforms(
-                Box::parse(node)?,
+                Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
             "tags" => Ok(Some(Items::Tags(
-                Box::parse(node)?,
+                Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
             "types" => Ok(Some(Items::Types(
-                CommentendChildren::parse(node)?,
+                Parse::parse(node)?,
                 try_attribute(node, "comment")?,
             ))),
             "enums" => Ok(Some(Items::Enums(Parse::parse(node)?))),

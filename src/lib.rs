@@ -1,6 +1,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 
+mod into_xml;
 mod lexer;
 mod parse_xml;
 mod parser;

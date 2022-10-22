@@ -10,6 +10,10 @@ peg = "~0.8.1"
 enumflags2 = {version = "~0.7.5", features = ["serde"]}
 strum = { version = "0.24", features = ["derive"] }
 serde = {version = "1", features = ["derive"]}
+quick-xml = {version = "0.25", optional = true}
+
+[features]
+default = ["quick-xml"]
 
 [dev-dependencies]
 ron = "0.8.0"

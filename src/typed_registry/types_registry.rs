@@ -308,7 +308,7 @@ pub struct EnumType<'a> {
 pub struct FnPtrType<'a> {
     pub name_and_return: FieldLike<'a>,
     pub requires: Option<Cow<'a, str>>,
-    pub params: Box<[FieldLike<'a>]>,
+    pub params: Option<Vec<FieldLike<'a>>>,
 }
 
 /// <type category="struct">
