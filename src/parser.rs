@@ -300,6 +300,22 @@ impl fmt::Display for MemberAccess {
     }
 }
 
+struct MaybeParenWrap<'b, 'a>(&'b Expression<'a>);
+
+impl fmt::Display for MaybeParenWrap<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if matches!(
+            self.0,
+            Expression::Identifier(_) | Expression::Constant(_) | Expression::Literal(_)
+        ) {
+            write!(f, "{}", self.0)
+        } else {
+            write!(f, "({})", self.0)
+        }
+    }
+}
+
+// Only used for roundtrip
 impl fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -307,11 +323,19 @@ impl fmt::Display for Expression<'_> {
             Expression::Constant(c) => write!(f, "{}", c),
             Expression::Literal(lit) => write!(f, "{:?}", lit),
             Expression::SizeOf(_) => todo!(),
-            Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => write!(f, "{}++", e),
-            Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => write!(f, "{}--", e),
-            Expression::Unary(op, e) => write!(f, "{}{}", op, e),
-            Expression::Binary(op, l, r) => write!(f, "{} {} {}", l, op, r),
-            Expression::Comparision(op, l, r) => write!(f, "{} {} {}", l, op, r),
+            Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
+                write!(f, "{}++", MaybeParenWrap(e))
+            }
+            Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => {
+                write!(f, "{}--", MaybeParenWrap(e))
+            }
+            Expression::Unary(op, e) => write!(f, "{}{}", op, MaybeParenWrap(e)),
+            Expression::Binary(op, l, r) => {
+                write!(f, "{} {} {}", MaybeParenWrap(l), op, MaybeParenWrap(r))
+            }
+            Expression::Comparision(op, l, r) => {
+                write!(f, "{} {} {}", MaybeParenWrap(l), op, MaybeParenWrap(r))
+            }
             Expression::Assignment(_, _, _) => todo!(),
             Expression::TernaryIfElse(cond, et, ef) => write!(f, "{} ? {} : {}", cond, et, ef),
             Expression::FunctionCall(func, args) => {

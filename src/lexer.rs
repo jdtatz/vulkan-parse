@@ -45,11 +45,25 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub enum Constant {
     Char(u8),
     Integer(u64),
     Float(f64),
+}
+
+impl PartialEq for Constant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Char(l), Self::Char(r)) => l == r,
+            (Self::Integer(l), Self::Integer(r)) => l == r,
+            (Self::Float(l), Self::Float(r)) => l == r,
+            (Self::Float(f), Self::Integer(i)) | (Self::Integer(i), Self::Float(f)) => {
+                (*i as f64) == *f
+            }
+            _ => false,
+        }
+    }
 }
 
 // SAFETY: Floating point constants must be finite (NaN is a macro)
@@ -542,6 +556,56 @@ impl<'a> Token<'a> {
             Token::Define => Token::Define,
         }
     }
+
+    pub fn is_ident_like(&self) -> bool {
+        match self {
+            Token::Auto => true,
+            Token::Break => true,
+            Token::Case => true,
+            Token::Char => true,
+            Token::Const => true,
+            Token::Continue => true,
+            Token::Default => true,
+            Token::Do => true,
+            Token::Double => true,
+            Token::Else => true,
+            Token::Enum => true,
+            Token::Extern => true,
+            Token::Float => true,
+            Token::For => true,
+            Token::Goto => true,
+            Token::If => true,
+            Token::Inline => true,
+            Token::Int => true,
+            Token::Long => true,
+            Token::Register => true,
+            Token::Restrict => true,
+            Token::Return => true,
+            Token::Short => true,
+            Token::Signed => true,
+            Token::SizeOf => true,
+            Token::Static => true,
+            Token::Struct => true,
+            Token::Switch => true,
+            Token::TypeDef => true,
+            Token::Union => true,
+            Token::UnSigned => true,
+            Token::Void => true,
+            Token::Volatile => true,
+            Token::While => true,
+            Token::Bool => true,
+            Token::Complex => true,
+            Token::Imaginary => true,
+
+            Token::_MalformedDefine => true,
+            Token::Define => true,
+            Token::Identifier(_) => true,
+            Token::Constant(_) => true,
+            Token::Literal(_) => true,
+
+            _ => false,
+        }
+    }
 }
 
 impl<'a> fmt::Display for Token<'a> {
@@ -650,7 +714,8 @@ impl<'a> fmt::Display for Token<'a> {
             // Token::Error => unreachable!(),
             Token::Define => write!(f, "#define"),
         }?;
-        write!(f, " ")
+        // write!(f, " ")
+        Ok(())
     }
 }
 

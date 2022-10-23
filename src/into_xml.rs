@@ -288,11 +288,20 @@ impl<'a> IntoXMLElement for Tag<'a> {
 }
 
 fn tokens_to_string(tokens: &[Token]) -> String {
-    tokens
-        .iter()
-        .map(|t| t.to_string())
-        .collect::<Vec<_>>()
-        .concat()
+    use std::fmt::Write;
+
+    let mut code = String::new();
+    let mut last_ident_like = false;
+    for token in tokens {
+        let is_ident_like = token.is_ident_like();
+        if last_ident_like && is_ident_like {
+            write!(code, " {}", token).unwrap();
+        } else {
+            write!(code, "{}", token).unwrap();
+        }
+        last_ident_like = is_ident_like;
+    }
+    code
 }
 
 fn write_typed_tag<W: Write>(
@@ -308,9 +317,9 @@ fn write_typed_tag<W: Write>(
         TypeSpecifier::Identifier(TypeIdentifier::Struct(_))
     );
     let pre = match (is_const, is_struct) {
-        (true, true) => "const struct",
-        (true, false) => "const",
-        (false, true) => "struct",
+        (true, true) => "const struct ",
+        (true, false) => "const ",
+        (false, true) => "struct ",
         (false, false) => "",
     };
     writer.write_event(Event::Text(BytesText::new(pre)))?;
@@ -324,14 +333,14 @@ fn write_typed_tag<W: Write>(
         .create_element2("type")
         .write_escaped_text(&ty_name)?;
     let post = match pointer_kind {
-        Some(PointerKind::Single) => "*",
+        Some(PointerKind::Single) => "* ",
         Some(PointerKind::Double {
             inner_is_const: true,
-        }) => "* const*",
+        }) => "* const* ",
         Some(PointerKind::Double {
             inner_is_const: false,
-        }) => "**",
-        None => "",
+        }) => "** ",
+        None => " ",
     };
     writer.write_event(Event::Text(BytesText::new(post)))?;
     if name_is_tag {
@@ -378,10 +387,8 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
             .write_inner_content_(|writer| {
                 write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
                 if let Some(bitfield_size) = bitfield_size {
-                    writer.write_event(Event::Text(BytesText::new(&format!(
-                        " : {}",
-                        bitfield_size
-                    ))))?;
+                    writer
+                        .write_event(Event::Text(BytesText::new(&format!(":{}", bitfield_size))))?;
                 }
                 if let Some(array_shape) = array_shape {
                     for shape in array_shape.iter() {
@@ -445,7 +452,11 @@ impl<'a> IntoXMLElement for Type<'a> {
                     .with_fmt_attribute("category", "define")
                     .with_opt_attribute("requires", requires.as_deref())
                     .with_opt_attribute("comment", comment.as_deref());
-                let define_macro = if *is_disabled { "//#define" } else { "#define" };
+                let define_macro = if *is_disabled {
+                    "//#define "
+                } else {
+                    "#define "
+                };
                 match value {
                     DefineTypeValue::Expression(expr) => elem.write_inner_content_(|writer| {
                         writer.write_event(Event::Text(BytesText::new(define_macro)))?;
@@ -491,7 +502,7 @@ impl<'a> IntoXMLElement for Type<'a> {
                         writer.write_event(Event::Text(BytesText::new(";")))
                     }),
                     BaseTypeType::TypeDef(field) => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::new("typedef ")))?;
+                        writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
                         let FieldLike {
                             name,
                             type_name,
@@ -504,13 +515,10 @@ impl<'a> IntoXMLElement for Type<'a> {
                     }),
                     BaseTypeType::DefineGuarded { pre, name, post } => {
                         elem.write_inner_content_(|writer| {
-                            writer.write_event(Event::Text(BytesText::new(
-                                &tokens_to_string(pre),
-                            )))?;
+                            writer
+                                .write_event(Event::Text(BytesText::new(&tokens_to_string(pre))))?;
                             writer.create_element2("name").write_escaped_text(name)?;
-                            writer.write_event(Event::Text(BytesText::new(
-                                &tokens_to_string(post),
-                            )))
+                            writer.write_event(Event::Text(BytesText::new(&tokens_to_string(post))))
                         })
                     }
                 }
@@ -581,10 +589,23 @@ impl<'a> IntoXMLElement for Type<'a> {
                         }),
                 }
             }
-            Type::Enum(EnumType { name }) => elem
-                .with_fmt_attribute("category", "enum")
-                .with_fmt_attribute("name", name)
-                .write_empty_(),
+            Type::Enum(defn) => {
+                elem = elem.with_fmt_attribute("category", "enum");
+                match defn {
+                    DefinitionOrAlias::Alias {
+                        name,
+                        alias,
+                        comment,
+                    } => elem
+                        .with_fmt_attribute("name", name)
+                        .with_fmt_attribute("alias", alias)
+                        .with_opt_attribute("comment", comment.as_deref())
+                        .write_empty_(),
+                    DefinitionOrAlias::Definition(EnumType { name }) => {
+                        elem.with_fmt_attribute("name", name).write_empty_()
+                    }
+                }
+            }
             Type::FnPtr(FnPtrType {
                 name_and_return,
                 requires,
@@ -594,7 +615,8 @@ impl<'a> IntoXMLElement for Type<'a> {
                 .with_opt_attribute("requires", requires.as_deref())
                 .write_inner_content_(|writer| {
                     writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
-                    writer.write_event(Event::Text(BytesText::new(&name_and_return.type_name.to_string(),
+                    writer.write_event(Event::Text(BytesText::new(
+                        &name_and_return.type_name.to_string(),
                     )))?;
                     let post = match name_and_return.pointer_kind {
                         Some(PointerKind::Single) => "*",
@@ -616,9 +638,10 @@ impl<'a> IntoXMLElement for Type<'a> {
                         let mut is_first = true;
                         for param in params {
                             if is_first {
-                                is_first = false
+                                is_first = false;
+                                writer.write_event(Event::Text(BytesText::new("\n     ")))?;
                             } else {
-                                writer.write_event(Event::Text(BytesText::new(",\n")))?;
+                                writer.write_event(Event::Text(BytesText::new(",\n     ")))?;
                             }
                             let FieldLike {
                                 name,
@@ -659,6 +682,8 @@ impl<'a> IntoXMLElement for Type<'a> {
                         returned_only,
                         struct_extends,
                         allow_duplicate,
+                        requires,
+                        comment,
                     }) => elem
                         .with_fmt_attribute("name", name)
                         .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
@@ -670,6 +695,8 @@ impl<'a> IntoXMLElement for Type<'a> {
                             "allowduplicate",
                             allow_duplicate.map(|b| b.to_string()),
                         )
+                        .with_opt_attribute("requires", requires.as_deref())
+                        .with_opt_attribute("comment", comment.as_deref())
                         .write_children(members),
                 }
             }
@@ -677,10 +704,12 @@ impl<'a> IntoXMLElement for Type<'a> {
                 name,
                 members,
                 returned_only,
+                comment,
             }) => elem
                 .with_fmt_attribute("category", "union")
                 .with_fmt_attribute("name", name)
                 .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(members),
         }
     }
@@ -695,11 +724,13 @@ impl<'a> IntoXMLElement for Member<'a> {
             values,
             limit_type,
         } = self;
-        base.write_element(element
-            .with_opt_attribute("selector", selector.as_ref())
-            .with_opt_attribute("selection", selection.as_ref())
-            .with_opt_attribute("values", values.as_ref())
-            .with_opt_attribute("limittype", limit_type.as_ref()))
+        base.write_element(
+            element
+                .with_opt_attribute("selector", selector.as_ref())
+                .with_opt_attribute("selection", selection.as_ref())
+                .with_opt_attribute("values", values.as_ref())
+                .with_opt_attribute("limittype", limit_type.as_ref()),
+        )
     }
 
     const TAG: &'static str = "member";
@@ -709,11 +740,13 @@ impl<'a> IntoXMLElement for Enums<'a> {
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Enums {
             name,
+            bit_width,
             comment,
             values,
         } = self;
         let elem = element
             .with_fmt_attribute("name", name)
+            .with_opt_attribute("bitwidth", bit_width.as_ref())
             .with_opt_attribute("comment", comment.as_deref());
         match values {
             EnumsValues::Constants(constants) => elem.write_children(constants),
@@ -828,9 +861,9 @@ impl<'a> IntoXMLElement for Format<'a> {
         element
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("class", class)
-            .with_fmt_attribute("blocksize", block_size)
-            .with_fmt_attribute("texelsperblock", texels_per_block)
-            .with_opt_attribute("blockextent", block_extent.as_ref())
+            .with_fmt_attribute("blockSize", block_size)
+            .with_fmt_attribute("texelsPerBlock", texels_per_block)
+            .with_opt_attribute("blockExtent", block_extent.as_ref())
             .with_opt_attribute("packed", packed.as_ref())
             .with_opt_attribute("compressed", compressed.as_ref())
             .with_opt_attribute("chroma", chroma.as_ref())
@@ -893,23 +926,16 @@ impl<'a> IntoXMLElement for Command<'a> {
         } = self;
         element
             .with_opt_attribute("successcodes", success_codes.as_ref())
-            .with_opt_attribute("error_codes", error_codes.as_deref().map(|ec| ec.join(",")))
-            .with_opt_attribute("queues", queues.as_ref())
-            .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.as_ref())
+            .with_opt_attribute("errorcodes", error_codes.as_deref().map(|ec| ec.join(",")))
+            .with_opt_attribute("queues", queues.map(Seperated::<_, ','>))
+            .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.map(Seperated::<_, ','>))
             .with_opt_attribute("description", description.as_ref())
-            .with_opt_attribute("tasks", tasks.as_ref())
-            .with_opt_attribute("video_coding", video_coding.as_ref())
+            .with_opt_attribute("tasks", tasks.map(Seperated::<_, ','>))
+            .with_opt_attribute("videocoding", video_coding.as_ref())
             .with_opt_attribute("renderpass", renderpass.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_inner_content_(|writer| {
-                let FieldLike {
-                    name,
-                    type_name,
-                    is_const,
-                    pointer_kind,
-                    ..
-                } = proto;
-                write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
+                proto.write_element(writer.create_element2("proto"))?;
                 for param in params.iter() {
                     param.write_xml(writer)?;
                 }
@@ -929,12 +955,14 @@ impl<'a> IntoXMLElement for CommandParam<'a> {
             valid_structs,
             stride,
         } = self;
-        base.write_element(element
-            .with_opt_attribute(
-                "validstructs",
-                valid_structs.as_deref().map(|vs| vs.join(",")),
-            )
-            .with_opt_attribute("stride", stride.as_deref()))
+        base.write_element(
+            element
+                .with_opt_attribute(
+                    "validstructs",
+                    valid_structs.as_deref().map(|vs| vs.join(",")),
+                )
+                .with_opt_attribute("stride", stride.as_deref()),
+        )
     }
 
     const TAG: &'static str = "param";
@@ -975,15 +1003,21 @@ impl<'a> IntoXMLElement for Extension<'a> {
             author,
             contact,
             promoted_to,
+            deprecated_by,
+            obsoleted_by,
             comment,
             requires,
+            platform,
+            provisional,
+            special_use,
+            sort_order,
         } = self;
         element
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("number", number)
             .with_opt_attribute("type", kind.as_ref())
             .with_fmt_attribute("supported", supported)
-            .with_opt_attribute("requirescore", requires_core.as_ref())
+            .with_opt_attribute("requiresCore", requires_core.as_ref())
             .with_opt_attribute(
                 "requires",
                 requires_depencies.as_deref().map(|d| d.join(",")),
@@ -991,6 +1025,12 @@ impl<'a> IntoXMLElement for Extension<'a> {
             .with_opt_attribute("author", author.as_ref())
             .with_opt_attribute("contact", contact.as_ref())
             .with_opt_attribute("promotedto", promoted_to.as_ref())
+            .with_opt_attribute("deprecatedby", deprecated_by.as_ref())
+            .with_opt_attribute("obsoletedby", obsoleted_by.as_ref())
+            .with_opt_attribute("sortorder", sort_order.as_ref())
+            .with_opt_attribute("platform", platform.as_ref())
+            .with_opt_attribute("provisional", provisional.as_ref())
+            .with_opt_attribute("specialuse", special_use.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_children(requires)
     }
@@ -1018,8 +1058,15 @@ impl<'a> IntoXMLElement for PseudoExtension<'a> {
 
 impl<'a> IntoXMLElement for Require<'a> {
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        let Require { comment, values } = self;
+        let Require {
+            comment,
+            values,
+            extension,
+            feature,
+        } = self;
         element
+            .with_opt_attribute("feature", feature.as_ref())
+            .with_opt_attribute("extension", extension.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_children(values)
     }
@@ -1041,13 +1088,17 @@ impl<'a> IntoXML for RequireValue<'a> {
                 .with_opt_attribute("comment", comment.as_deref())
                 .write_empty_(),
             RequireValue::Enum {
+                name,
                 extends,
                 value,
+                protect,
                 comment,
             } => {
                 let elem = writer
                     .create_element2("enum")
+                    .with_opt_attribute("name", name.as_deref())
                     .with_opt_attribute("extends", extends.as_deref())
+                    .with_opt_attribute("protect", protect.as_deref())
                     .with_opt_attribute("comment", comment.as_deref());
                 match value {
                     Some(RequireValueEnum::Alias(alias)) => elem.with_fmt_attribute("alias", alias),
@@ -1161,11 +1212,13 @@ impl<'a> IntoXMLElement for StructEnable<'a> {
             name,
             feature,
             requires,
+            alias,
         } = self;
         element
             .with_fmt_attribute("struct", name)
             .with_fmt_attribute("feature", feature)
             .with_fmt_attribute("requires", requires)
+            .with_opt_attribute("alias", alias.as_deref())
             .write_empty_()
     }
 }

@@ -76,3 +76,12 @@ where
         s.split(C).map(V::Item::try_from).collect()
     }
 }
+
+impl<V: Copy + Container, const C: char> std::fmt::Display for Seperated<V, C>
+where
+    <V as IntoIterator>::Item: std::fmt::Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt_write_interspersed(f, self.0.into_iter(), &C)
+    }
+}

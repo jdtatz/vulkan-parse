@@ -40,12 +40,12 @@ pub struct ImplicitExternSyncParams<'a> {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
 pub enum Queue {
+    #[strum(serialize = "transfer")]
+    Transfer,
     #[strum(serialize = "graphics")]
     Graphics,
     #[strum(serialize = "compute")]
     Compute,
-    #[strum(serialize = "transfer")]
-    Transfer,
     #[strum(serialize = "sparse_binding")]
     SparseBinding,
     #[strum(serialize = "protected")]
@@ -148,7 +148,8 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
             Ok(Some(ImplicitExternSyncParams {
                 params: node
                     .children()
-                    .filter_map(|n| n.text())
+                    .filter(|n| n.has_tag_name("param"))
+                    .map(|n| n.text().unwrap_or(""))
                     .map(Cow::Borrowed)
                     .collect(),
             }))

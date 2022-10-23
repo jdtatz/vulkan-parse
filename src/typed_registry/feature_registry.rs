@@ -6,6 +6,7 @@ use serde::Serialize;
 use super::common::{CommentendChildren, SemVarVersion};
 use crate::{
     attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
+    StdVersion,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
@@ -26,6 +27,8 @@ pub struct Feature<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Require<'a> {
     pub comment: Option<Cow<'a, str>>,
+    pub feature: Option<StdVersion>,
+    pub extension: Option<Cow<'a, str>>,
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
@@ -40,8 +43,10 @@ pub enum RequireValue<'a> {
         comment: Option<Cow<'a, str>>,
     },
     Enum {
+        name: Option<Cow<'a, str>>,
         extends: Option<Cow<'a, str>>,
         value: Option<RequireValueEnum<'a>>,
+        protect: Option<Cow<'a, str>>,
         comment: Option<Cow<'a, str>>,
     },
 }
@@ -86,6 +91,8 @@ impl<'a, 'input> Parse<'a, 'input> for Require<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("require") {
             Ok(Some(Require {
+                feature: try_attribute_fs(node, "feature")?,
+                extension: try_attribute(node, "extension")?,
                 comment: try_attribute(node, "comment")?,
                 values: Parse::parse(node)?,
             }))
@@ -107,7 +114,9 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
                 comment: try_attribute(node, "comment")?,
             })),
             "enum" => Ok(Some(RequireValue::Enum {
+                name: try_attribute(node, "name")?,
                 extends: try_attribute(node, "extends")?,
+                protect: try_attribute(node, "protect")?,
                 value: Parse::parse(node)?,
                 comment: try_attribute(node, "comment")?,
             })),

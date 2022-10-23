@@ -26,6 +26,14 @@ pub enum ExtensionSupport {
     Disabled,
 }
 
+// FIXME Unsure of the sortorder attribute's purpose,
+//  may be better to be an Option<NonZeroU8> if it's a versioning attr
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+pub enum SortOrder {
+    #[strum(serialize = "1")]
+    One,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ExtensionPromotion<'a> {
     Core(StdVersion),
@@ -65,7 +73,12 @@ pub struct Extension<'a> {
     // Only missing for VK_KHR_mir_surface, VK_RESERVED_do_not_use_94, & VK_RESERVED_do_not_use_146
     pub contact: Option<Cow<'a, str>>,
     pub promoted_to: Option<ExtensionPromotion<'a>>,
-
+    pub deprecated_by: Option<ExtensionPromotion<'a>>,
+    pub obsoleted_by: Option<ExtensionPromotion<'a>>,
+    pub sort_order: Option<SortOrder>,
+    pub platform: Option<Cow<'a, str>>,
+    pub provisional: Option<bool>,
+    pub special_use: Option<Cow<'a, str>>,
     pub comment: Option<Cow<'a, str>>,
     pub requires: Box<[Require<'a>]>,
 }
@@ -92,7 +105,13 @@ impl<'a, 'input> Parse<'a, 'input> for Extension<'a> {
                     author: try_attribute(node, "author")?,
                     contact: try_attribute(node, "contact")?,
                     promoted_to: try_attribute(node, "promotedto")?,
+                    deprecated_by: try_attribute(node, "deprecatedby")?,
+                    obsoleted_by: try_attribute(node, "obsoletedby")?,
+                    sort_order: try_attribute(node, "sortorder")?,
                     requires: Parse::parse(node)?,
+                    platform: try_attribute(node, "platform")?,
+                    provisional: try_attribute_fs(node, "provisional")?,
+                    special_use: try_attribute(node, "specialuse")?,
                     comment: try_attribute(node, "comment")?,
                 }))
             } else {

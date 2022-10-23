@@ -64,7 +64,8 @@ impl<'a> fmt::Display for DynamicLength<'a> {
             DynamicLength::Static(n) => write!(f, "{}", n),
             DynamicLength::Parameterized(p) => write!(f, "{}", p),
             DynamicLength::ParameterizedField { parameter, field } => {
-                write!(f, "{}-&gt;{}", parameter, field)
+                // write!(f, "{}-&gt;{}", parameter, field)
+                write!(f, "{}->{}", parameter, field)
             }
         }
     }
@@ -199,7 +200,7 @@ pub enum Type<'a> {
     /// <type category="handle">
     Handle(DefinitionOrAlias<'a, HandleType<'a>>),
     /// <type category="enum">
-    Enum(EnumType<'a>),
+    Enum(DefinitionOrAlias<'a, EnumType<'a>>),
     /// <type category="funcpointer">
     FnPtr(FnPtrType<'a>),
     /// <type category="struct">
@@ -319,6 +320,8 @@ pub struct StructType<'a> {
     pub returned_only: Option<bool>,
     pub struct_extends: Option<Vec<Cow<'a, str>>>,
     pub allow_duplicate: Option<bool>,
+    pub requires: Option<Cow<'a, str>>,
+    pub comment: Option<Cow<'a, str>>,
 }
 
 /// <type category="union">
@@ -327,6 +330,7 @@ pub struct UnionType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
     pub returned_only: Option<bool>,
+    pub comment: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
@@ -388,7 +392,7 @@ impl<'a, 'input> Parse<'a, 'input> for Type<'a> {
                 Some("basetype") => BaseTypeType::parse(node).map(Type::BaseType),
                 Some("bitmask") => DefinitionOrAlias::parse(node).map(Type::Bitmask),
                 Some("handle") => DefinitionOrAlias::parse(node).map(Type::Handle),
-                Some("enum") => EnumType::parse(node).map(Type::Enum),
+                Some("enum") => DefinitionOrAlias::parse(node).map(Type::Enum),
                 Some("funcpointer") => FnPtrType::parse(node).map(Type::FnPtr),
                 Some("struct") => DefinitionOrAlias::parse(node).map(Type::Struct),
                 Some("union") => UnionType::parse(node).map(Type::Union),
@@ -513,6 +517,8 @@ impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
             struct_extends: try_attribute_sep::<_, ','>(node, "structextends")?,
             allow_duplicate: try_attribute_fs(node, "allowduplicate")?,
             members: Parse::parse(node)?,
+            requires: try_attribute(node, "requires")?,
+            comment: try_attribute(node, "comment")?,
         }))
     }
 }
@@ -523,6 +529,7 @@ impl<'a, 'input> Parse<'a, 'input> for UnionType<'a> {
             name: attribute(node, "name")?,
             returned_only: try_attribute_fs(node, "returnedonly")?,
             members: Parse::parse(node)?,
+            comment: try_attribute(node, "comment")?,
         }))
     }
 }

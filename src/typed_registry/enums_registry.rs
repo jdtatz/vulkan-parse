@@ -1,14 +1,21 @@
-use std::{borrow::Cow, num::ParseIntError};
+use std::{
+    borrow::Cow,
+    num::{NonZeroU8, ParseIntError},
+};
 
 use roxmltree::Node;
 use serde::Serialize;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
-use crate::{attribute, attribute_fs, try_attribute, Expression, Parse, ParseResult, Terminated};
+use crate::{
+    attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
+    Terminated,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Enums<'a> {
     pub name: Cow<'a, str>,
+    pub bit_width: Option<NonZeroU8>,
     pub comment: Option<Cow<'a, str>>,
     pub values: EnumsValues<'a>,
 }
@@ -65,6 +72,7 @@ impl<'a, 'input> Parse<'a, 'input> for Enums<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Enums {
             name: attribute(node, "name")?,
+            bit_width: try_attribute_fs(node, "bitwidth")?,
             comment: try_attribute(node, "comment")?,
             values: Parse::parse(node)?,
         }))

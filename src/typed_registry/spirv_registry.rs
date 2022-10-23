@@ -72,6 +72,7 @@ pub struct StructEnable<'a> {
     pub name: Cow<'a, str>,
     pub feature: Cow<'a, str>,
     pub requires: EnableRequires<'a>,
+    pub alias: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -153,6 +154,7 @@ impl<'a, 'input> Parse<'a, 'input> for StructEnable<'a> {
                 name,
                 feature: (attribute(node, "feature")?),
                 requires: (attribute(node, "requires")?),
+                alias: try_attribute(node, "alias")?,
             }))
         } else {
             Ok(None)
