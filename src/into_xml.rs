@@ -2,7 +2,7 @@ use std::{fmt, io::Write};
 
 use quick_xml::{
     escape::escape,
-    events::{attributes::Attribute, BytesStart, BytesText, Event},
+    events::{attributes::Attribute, BytesDecl, BytesStart, BytesText, Event},
     writer::Writer,
     Error,
 };
@@ -11,7 +11,11 @@ use crate::*;
 
 type Result = std::result::Result<(), Error>;
 
-// TODO on creation write!(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")?;
+pub fn into_xml<'a, W: Write>(reg: &Registry<'a>, to: W) -> Result {
+    let mut writer = Writer::new(to);
+    writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+    reg.write_xml(&mut writer)
+}
 
 // FIXME This makes ElementWriter::write_inner_content take a FnOnce instead of a Fn
 struct ElementWriter2<'a, W: Write> {
@@ -138,7 +142,7 @@ impl<'a, W: Write> ElementWriterExt<'a, W> for ElementWriter2<'a, W> {
     }
 
     fn write_escaped_text(self, text: &str) -> Result {
-        self.write_text_content(BytesText::from_escaped(text))?;
+        self.write_text_content(BytesText::new(text))?;
         Ok(())
     }
 
@@ -152,29 +156,46 @@ impl<'a, W: Write> ElementWriterExt<'a, W> for ElementWriter2<'a, W> {
 }
 
 trait IntoXML {
-    const TAG: Option<&'static str>;
-
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result;
 }
 
-impl<'a, T: IntoXML> IntoXML for DefinitionOrAlias<'a, T> {
+trait IntoXMLElement {
+    const TAG: &'static str;
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result;
+}
+
+impl<E: IntoXMLElement> IntoXML for E {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+        self.write_element(writer.create_element2(<Self as IntoXMLElement>::TAG))
+    }
+}
+
+impl<'a, E: IntoXMLElement> IntoXMLElement for &'a E {
+    const TAG: &'static str = E::TAG;
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        (*self).write_element(element)
+    }
+}
+
+impl<'a, T: IntoXMLElement> IntoXMLElement for DefinitionOrAlias<'a, T> {
+    const TAG: &'static str = T::TAG;
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         match self {
             DefinitionOrAlias::Alias {
                 name,
                 alias,
                 comment,
-            } => writer
-                .create_element2(Self::TAG.unwrap())
+            } => element
                 .with_fmt_attribute("name", name)
                 .with_fmt_attribute("alias", alias)
                 .with_opt_attribute("comment", comment.as_deref())
                 .write_empty_(),
-            DefinitionOrAlias::Definition(defn) => defn.write_xml(writer),
+            DefinitionOrAlias::Definition(defn) => defn.write_element(element),
         }
     }
-
-    const TAG: Option<&'static str> = T::TAG;
 }
 
 impl<'a, T: IntoXML> IntoXML for MaybeComment<'a, T> {
@@ -184,28 +205,24 @@ impl<'a, T: IntoXML> IntoXML for MaybeComment<'a, T> {
             MaybeComment::Comment(comment) => comment.write_xml(writer),
         }
     }
-
-    const TAG: Option<&'static str> = None;
 }
 
-impl<'a> IntoXML for Comment<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        writer
-            .create_element2("comment")
-            .write_escaped_text(&self.0)
+impl<'a> IntoXMLElement for Comment<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        element.write_escaped_text(&self.0)
     }
 
-    const TAG: Option<&'static str> = Some("comment");
+    const TAG: &'static str = "comment";
 }
 
 // Specfics
 
-impl<'a> IntoXML for Registry<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        writer.create_element2("registry").write_children(&self.0)
+impl<'a> IntoXMLElement for Registry<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        element.write_children(&self.0)
     }
 
-    const TAG: Option<&'static str> = Some("registry");
+    const TAG: &'static str = "registry";
 }
 
 impl<'a> IntoXML for Items<'a> {
@@ -244,34 +261,30 @@ impl<'a> IntoXML for Items<'a> {
                 .write_children(capabilities),
         }
     }
-
-    const TAG: Option<&'static str> = None;
 }
 
-impl<'a> IntoXML for Platform<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        writer
-            .create_element2("platform")
+impl<'a> IntoXMLElement for Platform<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        element
             .with_fmt_attribute("name", &self.name)
             .with_fmt_attribute("protect", &self.protect)
             .with_opt_attribute("comment", self.comment.as_deref())
             .write_empty_()
     }
 
-    const TAG: Option<&'static str> = Some("platform");
+    const TAG: &'static str = "platform";
 }
 
-impl<'a> IntoXML for Tag<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        writer
-            .create_element2("tag")
+impl<'a> IntoXMLElement for Tag<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        element
             .with_fmt_attribute("name", &self.name)
             .with_fmt_attribute("author", &self.author)
-            .with_fmt_attribute("author", &self.contact)
+            .with_fmt_attribute("contact", &self.contact)
             .write_empty_()
     }
 
-    const TAG: Option<&'static str> = Some("tag");
+    const TAG: &'static str = "tag";
 }
 
 fn tokens_to_string(tokens: &[Token]) -> String {
@@ -283,17 +296,13 @@ fn tokens_to_string(tokens: &[Token]) -> String {
 }
 
 fn write_typed_tag<W: Write>(
-    field: &FieldLike,
+    name: &str,
+    type_name: &TypeSpecifier,
+    is_const: bool,
+    pointer_kind: &Option<PointerKind>,
     name_is_tag: bool,
     writer: &mut Writer<W>,
 ) -> Result {
-    let FieldLike {
-        name,
-        type_name,
-        is_const,
-        pointer_kind,
-        ..
-    } = field;
     let is_struct = matches!(
         type_name,
         TypeSpecifier::Identifier(TypeIdentifier::Struct(_))
@@ -333,17 +342,74 @@ fn write_typed_tag<W: Write>(
     Ok(())
 }
 
-impl<'a> IntoXML for FieldLike<'a> {
-    const TAG: Option<&'static str> = None;
+impl<'a> IntoXMLElement for FieldLike<'a> {
+    const TAG: &'static str = "";
 
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        todo!()
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let FieldLike {
+            name,
+            type_name,
+            is_const,
+            pointer_kind,
+            bitfield_size,
+            array_shape,
+            dynamic_shape,
+            extern_sync,
+            optional,
+            no_auto_validity,
+            object_type,
+            comment,
+        } = self;
+        let element = match dynamic_shape {
+            Some(DynamicShapeKind::Expression { latex_expr, c_expr }) => element
+                .with_fmt_attribute("len", format_args!("latexmath:{}", latex_expr))
+                .with_fmt_attribute("altlen", c_expr),
+            Some(DynamicShapeKind::Double(l1, l2)) => {
+                element.with_fmt_attribute("len", format_args!("{},{}", l1, l2))
+            }
+            Some(DynamicShapeKind::Single(l)) => element.with_fmt_attribute("len", l),
+            None => element,
+        };
+        element
+            .with_opt_attribute("optional", optional.as_ref())
+            .with_opt_attribute("noautovalidity", no_auto_validity.as_ref())
+            .with_opt_attribute("externsync", extern_sync.as_ref())
+            .with_opt_attribute("objecttype", object_type.as_ref())
+            .write_inner_content_(|writer| {
+                write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
+                if let Some(bitfield_size) = bitfield_size {
+                    writer.write_event(Event::Text(BytesText::new(&format!(
+                        " : {}",
+                        bitfield_size
+                    ))))?;
+                }
+                if let Some(array_shape) = array_shape {
+                    for shape in array_shape.iter() {
+                        writer.write_event(Event::Text(BytesText::new("[")))?;
+                        match shape {
+                            ArrayLength::Static(n) => writer
+                                .write_event(Event::Text(BytesText::new(&format!("{}", n))))?,
+                            ArrayLength::Constant(c) => {
+                                writer.create_element2("enum").write_escaped_text(c)?
+                            }
+                        }
+                        writer.write_event(Event::Text(BytesText::new("]")))?;
+                    }
+                }
+                if let Some(comment) = comment {
+                    writer
+                        .create_element2("comment")
+                        .write_escaped_text(comment)?;
+                }
+                Ok(())
+            })
     }
 }
 
-impl<'a> IntoXML for Type<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        let mut elem = writer.create_element2("type");
+impl<'a> IntoXMLElement for Type<'a> {
+    const TAG: &'static str = "type";
+
+    fn write_element<'e, W: Write>(&self, mut elem: ElementWriter2<'e, W>) -> Result {
         match self {
             Type::Requires(RequiresType { name, requires }) => elem
                 .with_fmt_attribute("name", name)
@@ -385,7 +451,7 @@ impl<'a> IntoXML for Type<'a> {
                         writer.write_event(Event::Text(BytesText::new(define_macro)))?;
                         writer.create_element2("name").write_escaped_text(name)?;
                         let value = format!(" {}", expr);
-                        writer.write_event(Event::Text(BytesText::from_escaped(&value)))
+                        writer.write_event(Event::Text(BytesText::new(&value)))
                     }),
                     DefineTypeValue::FunctionDefine { params, expression } => elem
                         .write_inner_content_(|writer| {
@@ -393,7 +459,7 @@ impl<'a> IntoXML for Type<'a> {
                             writer.create_element2("name").write_escaped_text(name)?;
                             let params = params.join(", ");
                             let value = format!("({}) {}", params, tokens_to_string(expression));
-                            writer.write_event(Event::Text(BytesText::from_escaped(&value)))
+                            writer.write_event(Event::Text(BytesText::new(&value)))
                         }),
                     DefineTypeValue::MacroFunctionCall {
                         name: fn_name,
@@ -409,7 +475,7 @@ impl<'a> IntoXML for Type<'a> {
                             .collect::<Vec<_>>()
                             .join(", ");
                         let value = format!("({})", args);
-                        writer.write_event(Event::Text(BytesText::from_escaped(&value)))
+                        writer.write_event(Event::Text(BytesText::new(&value)))
                     }),
                     DefineTypeValue::Code(tokens) => elem
                         .with_fmt_attribute("name", name)
@@ -424,19 +490,26 @@ impl<'a> IntoXML for Type<'a> {
                         writer.create_element2("name").write_escaped_text(name)?;
                         writer.write_event(Event::Text(BytesText::new(";")))
                     }),
-                    BaseTypeType::TypeDef(f) => elem.write_inner_content_(|writer| {
+                    BaseTypeType::TypeDef(field) => elem.write_inner_content_(|writer| {
                         writer.write_event(Event::Text(BytesText::new("typedef ")))?;
-                        write_typed_tag(f, true, writer)?;
+                        let FieldLike {
+                            name,
+                            type_name,
+                            is_const,
+                            pointer_kind,
+                            ..
+                        } = field;
+                        write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
                         writer.write_event(Event::Text(BytesText::new(";")))
                     }),
                     BaseTypeType::DefineGuarded { pre, name, post } => {
                         elem.write_inner_content_(|writer| {
-                            writer.write_event(Event::Text(BytesText::from_escaped(
-                                tokens_to_string(pre),
+                            writer.write_event(Event::Text(BytesText::new(
+                                &tokens_to_string(pre),
                             )))?;
                             writer.create_element2("name").write_escaped_text(name)?;
-                            writer.write_event(Event::Text(BytesText::from_escaped(
-                                tokens_to_string(post),
+                            writer.write_event(Event::Text(BytesText::new(
+                                &tokens_to_string(post),
                             )))
                         })
                     }
@@ -520,9 +593,8 @@ impl<'a> IntoXML for Type<'a> {
                 .with_fmt_attribute("category", "funcpointer")
                 .with_opt_attribute("requires", requires.as_deref())
                 .write_inner_content_(|writer| {
-                    writer.write_event(Event::Text(BytesText::new("typedef")))?;
-                    writer.write_event(Event::Text(BytesText::from_escaped(
-                        name_and_return.type_name.to_string(),
+                    writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
+                    writer.write_event(Event::Text(BytesText::new(&name_and_return.type_name.to_string(),
                     )))?;
                     let post = match name_and_return.pointer_kind {
                         Some(PointerKind::Single) => "*",
@@ -535,7 +607,7 @@ impl<'a> IntoXML for Type<'a> {
                         None => "",
                     };
                     writer.write_event(Event::Text(BytesText::new(post)))?;
-                    writer.write_event(Event::Text(BytesText::new("(VKAPI_PTR *")))?;
+                    writer.write_event(Event::Text(BytesText::new(" (VKAPI_PTR *")))?;
                     writer
                         .create_element2("name")
                         .write_escaped_text(&name_and_return.name)?;
@@ -548,7 +620,21 @@ impl<'a> IntoXML for Type<'a> {
                             } else {
                                 writer.write_event(Event::Text(BytesText::new(",\n")))?;
                             }
-                            write_typed_tag(param, false, writer)?;
+                            let FieldLike {
+                                name,
+                                type_name,
+                                is_const,
+                                pointer_kind,
+                                ..
+                            } = param;
+                            write_typed_tag(
+                                name,
+                                type_name,
+                                *is_const,
+                                pointer_kind,
+                                false,
+                                writer,
+                            )?;
                         }
                         writer.write_event(Event::Text(BytesText::new(");")))
                     } else {
@@ -598,12 +684,10 @@ impl<'a> IntoXML for Type<'a> {
                 .write_children(members),
         }
     }
-
-    const TAG: Option<&'static str> = Some("type");
 }
 
-impl<'a> IntoXML for Member<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for Member<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Member {
             base,
             selector,
@@ -611,27 +695,24 @@ impl<'a> IntoXML for Member<'a> {
             values,
             limit_type,
         } = self;
-        writer
-            .create_element2("member")
+        base.write_element(element
             .with_opt_attribute("selector", selector.as_ref())
             .with_opt_attribute("selection", selection.as_ref())
             .with_opt_attribute("values", values.as_ref())
-            .with_opt_attribute("limittype", limit_type.as_ref())
-            .write_inner_content_(|writer| base.write_xml(writer))
+            .with_opt_attribute("limittype", limit_type.as_ref()))
     }
 
-    const TAG: Option<&'static str> = Some("member");
+    const TAG: &'static str = "member";
 }
 
-impl<'a> IntoXML for Enums<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for Enums<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Enums {
             name,
             comment,
             values,
         } = self;
-        let elem = writer
-            .create_element2("enums")
+        let elem = element
             .with_fmt_attribute("name", name)
             .with_opt_attribute("comment", comment.as_deref());
         match values {
@@ -652,21 +733,20 @@ impl<'a> IntoXML for Enums<'a> {
         }
     }
 
-    const TAG: Option<&'static str> = Some("enums");
+    const TAG: &'static str = "enums";
 }
 
-impl<'a> IntoXML for ConstantEnum<'a> {
-    const TAG: Option<&'static str> = Some("enum");
+impl<'a> IntoXMLElement for ConstantEnum<'a> {
+    const TAG: &'static str = "enum";
 
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let ConstantEnum {
             name,
             type_name,
             value,
             comment,
         } = self;
-        writer
-            .create_element2("enum")
+        element
             .with_fmt_attribute("type", type_name)
             .with_fmt_attribute("value", value)
             .with_fmt_attribute("name", name)
@@ -675,17 +755,16 @@ impl<'a> IntoXML for ConstantEnum<'a> {
     }
 }
 
-impl<'a> IntoXML for ValueEnum<'a> {
-    const TAG: Option<&'static str> = Some("enum");
+impl<'a> IntoXMLElement for ValueEnum<'a> {
+    const TAG: &'static str = "enum";
 
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let ValueEnum {
             name,
             value,
             comment,
         } = self;
-        writer
-            .create_element2("enum")
+        element
             .with_fmt_attribute("value", value)
             .with_fmt_attribute("name", name)
             .with_opt_attribute("comment", comment.as_deref())
@@ -693,28 +772,27 @@ impl<'a> IntoXML for ValueEnum<'a> {
     }
 }
 
-impl<'a> IntoXML for BitmaskEnum<'a> {
-    const TAG: Option<&'static str> = Some("enum");
+impl<'a> IntoXMLElement for BitmaskEnum<'a> {
+    const TAG: &'static str = "enum";
 
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         match self {
-            BitmaskEnum::Value(value) => value.write_xml(writer),
-            BitmaskEnum::BitPos(bitpos) => bitpos.write_xml(writer),
+            BitmaskEnum::Value(value) => value.write_element(element),
+            BitmaskEnum::BitPos(bitpos) => bitpos.write_element(element),
         }
     }
 }
 
-impl<'a> IntoXML for BitPosEnum<'a> {
-    const TAG: Option<&'static str> = Some("enum");
+impl<'a> IntoXMLElement for BitPosEnum<'a> {
+    const TAG: &'static str = "enum";
 
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let BitPosEnum {
             name,
             bitpos,
             comment,
         } = self;
-        writer
-            .create_element2("enum")
+        element
             .with_fmt_attribute("bitpos", bitpos)
             .with_fmt_attribute("name", name)
             .with_opt_attribute("comment", comment.as_deref())
@@ -722,21 +800,20 @@ impl<'a> IntoXML for BitPosEnum<'a> {
     }
 }
 
-impl<'a> IntoXML for UnusedEnum<'a> {
-    const TAG: Option<&'static str> = Some("unused");
+impl<'a> IntoXMLElement for UnusedEnum<'a> {
+    const TAG: &'static str = "unused";
 
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let UnusedEnum { start, comment } = self;
-        writer
-            .create_element2("unused")
+        element
             .with_fmt_attribute("start", start)
             .with_opt_attribute("comment", comment.as_deref())
             .write_empty_()
     }
 }
 
-impl<'a> IntoXML for Format<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for Format<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Format {
             name,
             class,
@@ -748,8 +825,7 @@ impl<'a> IntoXML for Format<'a> {
             chroma,
             children,
         } = self;
-        writer
-            .create_element2("format")
+        element
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("class", class)
             .with_fmt_attribute("blocksize", block_size)
@@ -761,7 +837,7 @@ impl<'a> IntoXML for Format<'a> {
             .write_children(children)
     }
 
-    const TAG: Option<&'static str> = Some("format");
+    const TAG: &'static str = "format";
 }
 
 impl<'a> IntoXML for FormatChild<'a> {
@@ -797,12 +873,10 @@ impl<'a> IntoXML for FormatChild<'a> {
                 .write_empty_(),
         }
     }
-
-    const TAG: Option<&'static str> = None;
 }
 
-impl<'a> IntoXML for Command<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for Command<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Command {
             proto,
             params,
@@ -817,8 +891,7 @@ impl<'a> IntoXML for Command<'a> {
             renderpass,
             comment,
         } = self;
-        writer
-            .create_element2("command")
+        element
             .with_opt_attribute("successcodes", success_codes.as_ref())
             .with_opt_attribute("error_codes", error_codes.as_deref().map(|ec| ec.join(",")))
             .with_opt_attribute("queues", queues.as_ref())
@@ -829,7 +902,14 @@ impl<'a> IntoXML for Command<'a> {
             .with_opt_attribute("renderpass", renderpass.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_inner_content_(|writer| {
-                write_typed_tag(proto, true, writer)?;
+                let FieldLike {
+                    name,
+                    type_name,
+                    is_const,
+                    pointer_kind,
+                    ..
+                } = proto;
+                write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
                 for param in params.iter() {
                     param.write_xml(writer)?;
                 }
@@ -839,29 +919,39 @@ impl<'a> IntoXML for Command<'a> {
             })
     }
 
-    const TAG: Option<&'static str> = Some("command");
+    const TAG: &'static str = "command";
 }
 
-impl<'a> IntoXML for CommandParam<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for CommandParam<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let CommandParam {
             base,
             valid_structs,
             stride,
         } = self;
-        todo!()
+        base.write_element(element
+            .with_opt_attribute(
+                "validstructs",
+                valid_structs.as_deref().map(|vs| vs.join(",")),
+            )
+            .with_opt_attribute("stride", stride.as_deref()))
     }
 
-    const TAG: Option<&'static str> = Some("param");
+    const TAG: &'static str = "param";
 }
 
-impl<'a> IntoXML for ImplicitExternSyncParams<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for ImplicitExternSyncParams<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let ImplicitExternSyncParams { params } = self;
-        todo!()
+        element.write_inner_content_(|writer| {
+            for param in params.iter() {
+                writer.create_element2("param").write_escaped_text(param)?;
+            }
+            Ok(())
+        })
     }
 
-    const TAG: Option<&'static str> = Some("implicitexternsyncparams");
+    const TAG: &'static str = "implicitexternsyncparams";
 }
 
 impl<'a> IntoXML for WrappedExtension<'a> {
@@ -871,12 +961,10 @@ impl<'a> IntoXML for WrappedExtension<'a> {
             WrappedExtension::PseudoExtension(e) => e.write_xml(writer),
         }
     }
-
-    const TAG: Option<&'static str> = Some("extension");
 }
 
-impl<'a> IntoXML for Extension<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for Extension<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Extension {
             name,
             number,
@@ -890,28 +978,101 @@ impl<'a> IntoXML for Extension<'a> {
             comment,
             requires,
         } = self;
-        todo!()
+        element
+            .with_fmt_attribute("name", name)
+            .with_fmt_attribute("number", number)
+            .with_opt_attribute("type", kind.as_ref())
+            .with_fmt_attribute("supported", supported)
+            .with_opt_attribute("requirescore", requires_core.as_ref())
+            .with_opt_attribute(
+                "requires",
+                requires_depencies.as_deref().map(|d| d.join(",")),
+            )
+            .with_opt_attribute("author", author.as_ref())
+            .with_opt_attribute("contact", contact.as_ref())
+            .with_opt_attribute("promotedto", promoted_to.as_ref())
+            .with_opt_attribute("comment", comment.as_ref())
+            .write_children(requires)
     }
 
-    const TAG: Option<&'static str> = Some("extension");
+    const TAG: &'static str = "extension";
 }
 
-impl<'a> IntoXML for PseudoExtension<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for PseudoExtension<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let PseudoExtension {
             name,
             supported,
             comment,
             requires,
         } = self;
-        todo!()
+        element
+            .with_fmt_attribute("name", name)
+            .with_fmt_attribute("supported", supported)
+            .with_opt_attribute("comment", comment.as_ref())
+            .write_children(requires)
     }
 
-    const TAG: Option<&'static str> = Some("extension");
+    const TAG: &'static str = "extension";
 }
 
-impl<'a> IntoXML for Feature<'a> {
+impl<'a> IntoXMLElement for Require<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Require { comment, values } = self;
+        element
+            .with_opt_attribute("comment", comment.as_ref())
+            .write_children(values)
+    }
+
+    const TAG: &'static str = "require";
+}
+
+impl<'a> IntoXML for RequireValue<'a> {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+        match self {
+            RequireValue::Type { name, comment } => writer
+                .create_element2("type")
+                .with_fmt_attribute("name", name)
+                .with_opt_attribute("comment", comment.as_deref())
+                .write_empty_(),
+            RequireValue::Command { name, comment } => writer
+                .create_element2("command")
+                .with_fmt_attribute("name", name)
+                .with_opt_attribute("comment", comment.as_deref())
+                .write_empty_(),
+            RequireValue::Enum {
+                extends,
+                value,
+                comment,
+            } => {
+                let elem = writer
+                    .create_element2("enum")
+                    .with_opt_attribute("extends", extends.as_deref())
+                    .with_opt_attribute("comment", comment.as_deref());
+                match value {
+                    Some(RequireValueEnum::Alias(alias)) => elem.with_fmt_attribute("alias", alias),
+                    Some(RequireValueEnum::Bitpos(bitpos)) => {
+                        elem.with_fmt_attribute("bitpos", bitpos)
+                    }
+                    Some(RequireValueEnum::Offset {
+                        extnumber,
+                        offset,
+                        direction,
+                    }) => elem
+                        .with_fmt_attribute("offset", offset)
+                        .with_opt_attribute("extnumber", extnumber.as_ref())
+                        .with_opt_attribute("dir", direction.as_ref()),
+                    Some(RequireValueEnum::Value(value)) => elem.with_fmt_attribute("value", value),
+                    None => elem,
+                }
+                .write_empty_()
+            }
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for Feature<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let Feature {
             name,
             api,
@@ -919,30 +1080,111 @@ impl<'a> IntoXML for Feature<'a> {
             comment,
             requires,
         } = self;
-        todo!()
+        element
+            .with_fmt_attribute("name", name)
+            .with_fmt_attribute("api", api)
+            .with_fmt_attribute("number", number)
+            .with_opt_attribute("comment", comment.as_ref())
+            .write_children(requires)
     }
 
-    const TAG: Option<&'static str> = Some("feature");
+    const TAG: &'static str = "feature";
 }
 
-impl<'a> IntoXML for SpirvExtension<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for SpirvExtension<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let SpirvExtension {
             name,
             enable_extension,
             enable_version,
         } = self;
-        todo!()
+        element
+            .with_fmt_attribute("name", name)
+            .write_inner_content_(|writer| {
+                if let Some(ver) = enable_version {
+                    ver.write_xml(writer)?;
+                }
+                enable_extension.write_xml(writer)
+            })
     }
 
-    const TAG: Option<&'static str> = Some("spirvextension");
+    const TAG: &'static str = "spirvextension";
 }
 
-impl<'a> IntoXML for SpirvCapability<'a> {
-    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+impl<'a> IntoXMLElement for SpirvCapability<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let SpirvCapability { name, enables } = self;
-        todo!()
+        element
+            .with_fmt_attribute("name", name)
+            .write_children(enables)
     }
 
-    const TAG: Option<&'static str> = Some("spirvcapability");
+    const TAG: &'static str = "spirvcapability";
+}
+
+impl IntoXMLElement for VersionEnable {
+    const TAG: &'static str = "enable";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let VersionEnable(v) = self;
+        element.with_fmt_attribute("version", v).write_empty_()
+    }
+}
+
+impl<'a> IntoXMLElement for ExtensionEnable<'a> {
+    const TAG: &'static str = "enable";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let ExtensionEnable(v) = self;
+        element.with_fmt_attribute("extension", v).write_empty_()
+    }
+}
+
+impl<'a> IntoXMLElement for EnableSpirvCapability<'a> {
+    const TAG: &'static str = "enable";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        match self {
+            EnableSpirvCapability::Version(v) => v.write_element(element),
+            EnableSpirvCapability::Extension(v) => v.write_element(element),
+            EnableSpirvCapability::Struct(v) => v.write_element(element),
+            EnableSpirvCapability::Property(v) => v.write_element(element),
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for StructEnable<'a> {
+    const TAG: &'static str = "enable";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let StructEnable {
+            name,
+            feature,
+            requires,
+        } = self;
+        element
+            .with_fmt_attribute("struct", name)
+            .with_fmt_attribute("feature", feature)
+            .with_fmt_attribute("requires", requires)
+            .write_empty_()
+    }
+}
+
+impl<'a> IntoXMLElement for PropertyEnable<'a> {
+    const TAG: &'static str = "enable";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let PropertyEnable {
+            name,
+            member,
+            value,
+            requires,
+        } = self;
+        element
+            .with_fmt_attribute("property", name)
+            .with_fmt_attribute("member", member)
+            .with_fmt_attribute("value", value)
+            .with_fmt_attribute("requires", requires)
+            .write_empty_()
+    }
 }

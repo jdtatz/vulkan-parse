@@ -62,10 +62,10 @@ impl<'a> fmt::Display for EnableRequires<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct VersionEnable(StdVersion);
+pub struct VersionEnable(pub StdVersion);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ExtensionEnable<'a>(Cow<'a, str>);
+pub struct ExtensionEnable<'a>(pub Cow<'a, str>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StructEnable<'a> {

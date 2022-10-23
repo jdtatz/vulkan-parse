@@ -8,6 +8,7 @@ mod parser;
 mod typed_registry;
 
 pub use crate::{
+    into_xml::into_xml,
     lexer::{Constant, Error as LexerError, Token, TokenExtras},
     parse_xml::*,
     parser::*,
