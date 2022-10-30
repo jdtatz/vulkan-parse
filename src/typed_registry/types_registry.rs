@@ -230,6 +230,7 @@ pub struct DefineType<'a> {
     pub name: Cow<'a, str>,
     pub comment: Option<Cow<'a, str>>,
     pub requires: Option<Cow<'a, str>>,
+    pub deprecation_comment: Option<Cow<'a, str>>,
     pub is_disabled: bool,
     pub value: DefineTypeValue<'a>,
 }
@@ -246,6 +247,19 @@ pub enum DefineTypeValue<'a> {
         args: Box<[Expression<'a>]>,
     },
     Code(Box<[Token<'a>]>),
+}
+
+impl<'a> DefineTypeValue<'a> {
+    pub fn as_expr(&self) -> Option<Cow<'_, Expression<'a>>> {
+        match self {
+            Self::Expression(e) => Some(Cow::Borrowed(e)),
+            Self::MacroFunctionCall { name, args } => Some(Cow::Owned(Expression::FunctionCall(
+                Box::new(Expression::Identifier(name.clone())),
+                args.clone(),
+            ))),
+            _ => None,
+        }
+    }
 }
 
 // NOTE: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`

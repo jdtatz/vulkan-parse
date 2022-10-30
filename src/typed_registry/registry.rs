@@ -20,19 +20,37 @@ pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Items<'a> {
-    Platforms(Vec<Platform<'a>>, Option<Cow<'a, str>>),
-    Tags(Box<[Tag<'a>]>, Option<Cow<'a, str>>),
-    Types(CommentendChildren<'a, Type<'a>>, Option<Cow<'a, str>>),
+    Platforms {
+        platforms: Vec<Platform<'a>>,
+        comment: Option<Cow<'a, str>>,
+    },
+    Tags {
+        tags: Vec<Tag<'a>>,
+        comment: Option<Cow<'a, str>>,
+    },
+    Types {
+        types: CommentendChildren<'a, Type<'a>>,
+        comment: Option<Cow<'a, str>>,
+    },
     Enums(Enums<'a>),
-    Commands(
-        CommentendChildren<'a, DefinitionOrAlias<'a, Command<'a>>>,
-        Option<Cow<'a, str>>,
-    ),
+    Commands {
+        commands: CommentendChildren<'a, DefinitionOrAlias<'a, Command<'a>>>,
+        comment: Option<Cow<'a, str>>,
+    },
     Features(Feature<'a>),
-    Extensions(Box<[WrappedExtension<'a>]>, Option<Cow<'a, str>>),
-    Formats(Box<[Format<'a>]>),
-    SpirvExtensions(Box<[SpirvExtension<'a>]>, Option<Cow<'a, str>>),
-    SpirvCapabilities(Box<[SpirvCapability<'a>]>, Option<Cow<'a, str>>),
+    Extensions {
+        extensions: Vec<WrappedExtension<'a>>,
+        comment: Option<Cow<'a, str>>,
+    },
+    Formats(Vec<Format<'a>>),
+    SpirvExtensions {
+        extensions: Vec<SpirvExtension<'a>>,
+        comment: Option<Cow<'a, str>>,
+    },
+    SpirvCapabilities {
+        capabilities: Vec<SpirvCapability<'a>>,
+        comment: Option<Cow<'a, str>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -78,37 +96,37 @@ impl<'a, 'input: 'a> ParseElements<'a, 'input> for Registry<'a> {
 impl<'a, 'input> Parse<'a, 'input> for Items<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
-            "platforms" => Ok(Some(Items::Platforms(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
-            "tags" => Ok(Some(Items::Tags(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
-            "types" => Ok(Some(Items::Types(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
+            "platforms" => Ok(Some(Items::Platforms {
+                platforms: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
+            "tags" => Ok(Some(Items::Tags {
+                tags: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
+            "types" => Ok(Some(Items::Types {
+                types: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
             "enums" => Ok(Some(Items::Enums(Parse::parse(node)?))),
-            "commands" => Ok(Some(Items::Commands(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
+            "commands" => Ok(Some(Items::Commands {
+                commands: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
             "feature" => Ok(Some(Items::Features(Parse::parse(node)?))),
-            "extensions" => Ok(Some(Items::Extensions(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
+            "extensions" => Ok(Some(Items::Extensions {
+                extensions: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
             "formats" => Ok(Some(Items::Formats(Parse::parse(node)?))),
-            "spirvextensions" => Ok(Some(Items::SpirvExtensions(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
-            "spirvcapabilities" => Ok(Some(Items::SpirvCapabilities(
-                Parse::parse(node)?,
-                try_attribute(node, "comment")?,
-            ))),
+            "spirvextensions" => Ok(Some(Items::SpirvExtensions {
+                extensions: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
+            "spirvcapabilities" => Ok(Some(Items::SpirvCapabilities {
+                capabilities: Parse::parse(node)?,
+                comment: try_attribute(node, "comment")?,
+            })),
             _ => Ok(None),
         }
     }

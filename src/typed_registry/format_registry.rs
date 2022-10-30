@@ -42,7 +42,7 @@ pub enum FormatChild<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct BlockExtent(NonZeroU8, NonZeroU8, NonZeroU8);
+pub struct BlockExtent(pub NonZeroU8, pub NonZeroU8, pub NonZeroU8);
 
 impl FromStr for BlockExtent {
     type Err = <NonZeroU8 as FromStr>::Err;

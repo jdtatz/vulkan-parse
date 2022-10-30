@@ -1,4 +1,4 @@
-use std::{fmt, io::Write};
+use std::{borrow::Cow, fmt, io::Write};
 
 use quick_xml::{
     escape::escape,
@@ -228,36 +228,45 @@ impl<'a> IntoXMLElement for Registry<'a> {
 impl<'a> IntoXML for Items<'a> {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
         match self {
-            Items::Platforms(platforms, c) => writer
+            Items::Platforms { platforms, comment } => writer
                 .create_element2("platforms")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(platforms),
-            Items::Tags(tags, c) => writer
+            Items::Tags { tags, comment } => writer
                 .create_element2("tags")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(tags),
-            Items::Types(types, c) => writer
+            Items::Types { types, comment } => writer
                 .create_element2("types")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(types),
             Items::Enums(enums) => enums.write_xml(writer),
-            Items::Commands(commands, c) => writer
+            Items::Commands { commands, comment } => writer
                 .create_element2("commands")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(commands),
             Items::Features(features) => features.write_xml(writer),
-            Items::Extensions(extensions, c) => writer
+            Items::Extensions {
+                extensions,
+                comment,
+            } => writer
                 .create_element2("extensions")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(extensions),
             Items::Formats(formats) => writer.create_element2("formats").write_children(formats),
-            Items::SpirvExtensions(extensions, c) => writer
+            Items::SpirvExtensions {
+                extensions,
+                comment,
+            } => writer
                 .create_element2("spirvextensions")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(extensions),
-            Items::SpirvCapabilities(capabilities, c) => writer
+            Items::SpirvCapabilities {
+                capabilities,
+                comment,
+            } => writer
                 .create_element2("spirvcapabilities")
-                .with_opt_attribute("comment", c.as_deref())
+                .with_opt_attribute("comment", comment.as_deref())
                 .write_children(capabilities),
         }
     }
@@ -312,10 +321,7 @@ fn write_typed_tag<W: Write>(
     name_is_tag: bool,
     writer: &mut Writer<W>,
 ) -> Result {
-    let is_struct = matches!(
-        type_name,
-        TypeSpecifier::Identifier(TypeIdentifier::Struct(_))
-    );
+    let is_struct = matches!(type_name, TypeSpecifier::Struct(_));
     let pre = match (is_const, is_struct) {
         (true, true) => "const struct ",
         (true, false) => "const ",
@@ -324,9 +330,10 @@ fn write_typed_tag<W: Write>(
     };
     writer.write_event(Event::Text(BytesText::new(pre)))?;
     let ty_name = match type_name {
-        TypeSpecifier::Identifier(TypeIdentifier::Plain(id)) => id.to_string(),
-        TypeSpecifier::Identifier(TypeIdentifier::Struct(id)) => id.to_string(),
-        TypeSpecifier::Identifier(_) => todo!(),
+        TypeSpecifier::TypedefName(id) => id.to_string(),
+        TypeSpecifier::Struct(id) => id.to_string(),
+        TypeSpecifier::Union(_) => todo!(),
+        TypeSpecifier::Enum(_) => todo!(),
         ty => ty.to_string(),
     };
     writer
@@ -447,6 +454,7 @@ impl<'a> IntoXMLElement for Type<'a> {
                 requires,
                 is_disabled,
                 value,
+                deprecation_comment,
             }) => {
                 elem = elem
                     .with_fmt_attribute("category", "define")
@@ -457,16 +465,22 @@ impl<'a> IntoXMLElement for Type<'a> {
                 } else {
                     "#define "
                 };
+                let define_macro = if let Some(comment) = deprecation_comment {
+                    Cow::Owned(format!("// DEPRECATED:{}\n{}", comment, define_macro))
+                } else {
+                    Cow::Borrowed(define_macro)
+                };
                 match value {
                     DefineTypeValue::Expression(expr) => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::new(define_macro)))?;
+                        writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
                         writer.create_element2("name").write_escaped_text(name)?;
                         let value = format!(" {}", expr);
                         writer.write_event(Event::Text(BytesText::new(&value)))
                     }),
                     DefineTypeValue::FunctionDefine { params, expression } => elem
                         .write_inner_content_(|writer| {
-                            writer.write_event(Event::Text(BytesText::new(define_macro)))?;
+                            writer
+                                .write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
                             writer.create_element2("name").write_escaped_text(name)?;
                             let params = params.join(", ");
                             let value = format!("({}) {}", params, tokens_to_string(expression));
@@ -476,7 +490,7 @@ impl<'a> IntoXMLElement for Type<'a> {
                         name: fn_name,
                         args,
                     } => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::new(define_macro)))?;
+                        writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
                         writer.create_element2("name").write_escaped_text(name)?;
                         writer.write_event(Event::Text(BytesText::new(" ")))?;
                         writer.create_element2("type").write_escaped_text(fn_name)?;
@@ -1087,13 +1101,13 @@ impl<'a> IntoXML for RequireValue<'a> {
                 .with_fmt_attribute("name", name)
                 .with_opt_attribute("comment", comment.as_deref())
                 .write_empty_(),
-            RequireValue::Enum {
+            RequireValue::Enum(RequireEnum {
                 name,
                 extends,
                 value,
                 protect,
                 comment,
-            } => {
+            }) => {
                 let elem = writer
                     .create_element2("enum")
                     .with_opt_attribute("name", name.as_deref())

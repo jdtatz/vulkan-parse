@@ -42,13 +42,16 @@ pub enum RequireValue<'a> {
         name: Cow<'a, str>,
         comment: Option<Cow<'a, str>>,
     },
-    Enum {
-        name: Option<Cow<'a, str>>,
-        extends: Option<Cow<'a, str>>,
-        value: Option<RequireValueEnum<'a>>,
-        protect: Option<Cow<'a, str>>,
-        comment: Option<Cow<'a, str>>,
-    },
+    Enum(RequireEnum<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RequireEnum<'a> {
+    pub name: Option<Cow<'a, str>>,
+    pub extends: Option<Cow<'a, str>>,
+    pub value: Option<RequireValueEnum<'a>>,
+    pub protect: Option<Cow<'a, str>>,
+    pub comment: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
@@ -113,13 +116,13 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
                 name: attribute(node, "name")?,
                 comment: try_attribute(node, "comment")?,
             })),
-            "enum" => Ok(Some(RequireValue::Enum {
+            "enum" => Ok(Some(RequireValue::Enum(RequireEnum {
                 name: try_attribute(node, "name")?,
                 extends: try_attribute(node, "extends")?,
                 protect: try_attribute(node, "protect")?,
                 value: Parse::parse(node)?,
                 comment: try_attribute(node, "comment")?,
-            })),
+            }))),
             _ => Ok(None),
         }
     }

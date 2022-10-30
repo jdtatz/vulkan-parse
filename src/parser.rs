@@ -25,14 +25,6 @@ pub enum TypeQualifer {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 
-pub enum TypeIdentifier<'a> {
-    Plain(Cow<'a, str>),
-    Struct(Cow<'a, str>),
-    Union(Cow<'a, str>),
-    Enum(Cow<'a, str>),
-}
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-
 pub enum TypeSpecifier<'a> {
     Void,
     Char,
@@ -41,7 +33,10 @@ pub enum TypeSpecifier<'a> {
     Long,
     Float,
     Double,
-    Identifier(TypeIdentifier<'a>),
+    Struct(Cow<'a, str>),
+    Union(Cow<'a, str>),
+    Enum(Cow<'a, str>),
+    TypedefName(Cow<'a, str>),
 }
 
 impl<'a> TypeSpecifier<'a> {
@@ -54,8 +49,24 @@ impl<'a> TypeSpecifier<'a> {
             "long" => TypeSpecifier::Long,
             "float" => TypeSpecifier::Float,
             "double" => TypeSpecifier::Double,
-            _ if is_struct => TypeSpecifier::Identifier(TypeIdentifier::Struct(ident)),
-            _ => TypeSpecifier::Identifier(TypeIdentifier::Plain(ident)),
+            _ if is_struct => TypeSpecifier::Struct(ident),
+            _ => TypeSpecifier::TypedefName(ident),
+        }
+    }
+
+    pub fn as_identifier(&self) -> &str {
+        match self {
+            TypeSpecifier::Void => "void",
+            TypeSpecifier::Char => "char",
+            TypeSpecifier::Short => "short",
+            TypeSpecifier::Int => "int",
+            TypeSpecifier::Long => "long",
+            TypeSpecifier::Float => "float",
+            TypeSpecifier::Double => "double",
+            TypeSpecifier::Struct(id) => id,
+            TypeSpecifier::Union(id) => id,
+            TypeSpecifier::Enum(id) => id,
+            TypeSpecifier::TypedefName(id) => id,
         }
     }
 }
@@ -154,7 +165,7 @@ pub enum Expression<'a> {
         Box<Expression<'a>>,
     ),
     FunctionCall(Box<Expression<'a>>, Box<[Expression<'a>]>),
-    Comma(Box<[Expression<'a>]>),
+    Comma(Box<Expression<'a>>, Box<Expression<'a>>),
     Member(MemberAccess, Box<Expression<'a>>, Cow<'a, str>),
     ArrayElement(Box<Expression<'a>>, Box<Expression<'a>>),
 }
@@ -203,24 +214,9 @@ fn wrap_fn_call<'a>(f: Expression<'a>, args: Vec<Expression<'a>>) -> Expression<
     Expression::FunctionCall(Box::new(f), args.into_boxed_slice())
 }
 
-fn comma_expr_or_single(mut v: Vec<Expression>) -> Expression {
-    if v.len() == 1 {
-        v.pop().unwrap()
-    } else {
-        Expression::Comma(v.into_boxed_slice())
-    }
-}
-
-impl fmt::Display for TypeIdentifier<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TypeIdentifier::Plain(ident) => write!(f, "{}", ident),
-            TypeIdentifier::Struct(ident) => write!(f, "struct {}", ident),
-            TypeIdentifier::Union(ident) => write!(f, "union {}", ident),
-            TypeIdentifier::Enum(ident) => write!(f, "enum {}", ident),
-        }
-    }
-}
+// fn wrap_comma<'a>(head: Expression<'a>, tail: Expression<'a>) -> Expression<'a> {
+//     Expression::Comma(Box::new(head), Box::new(tail))
+// }
 
 impl fmt::Display for TypeSpecifier<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -232,7 +228,10 @@ impl fmt::Display for TypeSpecifier<'_> {
             TypeSpecifier::Long => write!(f, "long"),
             TypeSpecifier::Float => write!(f, "float"),
             TypeSpecifier::Double => write!(f, "double"),
-            TypeSpecifier::Identifier(ident) => write!(f, "{}", ident),
+            TypeSpecifier::Struct(ident) => write!(f, "struct {}", ident),
+            TypeSpecifier::Union(ident) => write!(f, "union {}", ident),
+            TypeSpecifier::Enum(ident) => write!(f, "enum {}", ident),
+            TypeSpecifier::TypedefName(ident) => write!(f, "{}", ident),
         }
     }
 }
@@ -345,13 +344,8 @@ impl fmt::Display for Expression<'_> {
                 }
                 write!(f, ")")
             }
-            Expression::Comma(v) => {
-                debug_assert!(v.len() > 1);
-                write!(f, "{}", &v[0])?;
-                for e in &v[1..] {
-                    write!(f, ", {}", e)?;
-                }
-                Ok(())
+            Expression::Comma(head, tail) => {
+                write!(f, "{} , {}", MaybeParenWrap(head), MaybeParenWrap(tail))
             }
             Expression::Member(access, v, member) => write!(f, "{}{}{}", v, access, member),
             Expression::ArrayElement(e, i) => write!(f, "{}[{}]", e, i),
@@ -487,27 +481,34 @@ enum BitFieldSizeOrArrayshape<'a> {
     ArrayShape(Box<[ArrayLength<'a>]>),
 }
 
+/// C is not a context-free languge and requires building a symbol table of typedefs at parse time to resolve ambigutites with cast expressions
+pub(crate) fn is_typedef_name(name: &str) -> bool {
+    // FIXME: actually build a symbol table as we go that is already filled with the standard typedefs (size_t, uint32_t, ...),
+    name.ends_with("_t") || name.starts_with("Vk")
+}
+
 peg::parser! {
     pub grammar c_with_vk_ext<'s, 'a>() for VkXMLTokens<'s, 'a> {
         pub rule identifier() -> Cow<'a, str>
           = quiet!{[VkXMLToken::C(Token::Identifier(i))] { i.clone() }}
           / expected!("Identifier")
 
-        rule type_identifier() -> TypeIdentifier<'a>
-          = "struct" i:identifier() { TypeIdentifier::Struct(i) }
-          / "union" i:identifier() { TypeIdentifier::Union(i) }
-          / "enum" i:identifier() { TypeIdentifier::Enum(i) }
-          / i:identifier() { TypeIdentifier::Plain(i) }
+        rule typedef_name() -> Cow<'a, str>
+          = quiet!{[VkXMLToken::C(Token::Identifier(i)) if is_typedef_name(i)] { i.clone() }}
+          / expected!("Typedef Name")
 
         rule type_specifier() -> TypeSpecifier<'a>
-          = i:type_identifier() { TypeSpecifier::Identifier(i) }
-          / "void" { TypeSpecifier::Void }
+          = "void" { TypeSpecifier::Void }
           / "char" { TypeSpecifier::Char }
           / "short" { TypeSpecifier::Short }
           / "int" { TypeSpecifier::Int }
           / "long" { TypeSpecifier::Long }
           / "float" { TypeSpecifier::Float }
           / "double" { TypeSpecifier::Double }
+          / "struct" i:identifier() { TypeSpecifier::Struct(i) }
+          / "union" i:identifier() { TypeSpecifier::Union(i) }
+          / "enum" i:identifier() { TypeSpecifier::Enum(i) }
+          / i:typedef_name() { TypeSpecifier::TypedefName(i) }
 
         pub rule type_name() -> TypeName<'a>
           = ty:type_specifier() { TypeName::Specifier(ty) }
@@ -523,13 +524,9 @@ peg::parser! {
           = quiet!{[VkXMLToken::C(Token::Literal(l))] { l.clone() }}
           / expected!("String Literal")
 
-        rule primary_expr() -> Expression<'a>
-          = i:identifier() { Expression::Identifier(i) }
-          / l:literal() { Expression::Literal(l) }
-          / c:constant() { Expression::Constant(c) }
-          / "(" e:expr() ")" { e }
-
-        rule expression() -> Expression<'a> = precedence!{
+        pub rule expr() -> Expression<'a> = precedence!{
+        //   x:(@) "," y:@ { wrap_comma(x, y) }
+        //   --
           x:@ "=" y:(@) { wrap_assignment(None, x, y) }
           x:@ "+=" y:(@) { wrap_assignment(Some(BinaryOp::Addition), x, y) }
           x:@ "-=" y:(@) { wrap_assignment(Some(BinaryOp::Subtraction), x, y) }
@@ -586,16 +583,15 @@ peg::parser! {
           x:(@) "." y:identifier() { wrap_member(x, MemberAccess::Direct, y) }
           x:(@) "->" y:identifier() { wrap_member(x, MemberAccess::Pointer, y) }
           x:(@) "[" y:expr() "]" { wrap_array_access(x, y) }
-          x:(@) "(" y:(expression() ** ",") ","? ")" { wrap_fn_call(x, y) }
+          x:(@) "(" y:(expr() ** ",") ","? ")" { wrap_fn_call(x, y) }
           x:(@) "++" { wrap_unary(UnaryOp::Increment(FixOrder::Postfix), x) }
           x:(@) "--" { wrap_unary(UnaryOp::Decrement(FixOrder::Postfix), x) }
           --
-          p:primary_expr() { p }
+          i:identifier() { Expression::Identifier(i) }
+          l:literal() { Expression::Literal(l) }
+          c:constant() { Expression::Constant(c) }
+          "(" e:expr() ")" { e }
         }
-
-        pub rule expr() -> Expression<'a>
-          = v:(expression() ++ ",") { comma_expr_or_single(v) }
-
 
         // C vk.xml exts
         rule type_tag() -> Cow<'a, str>
@@ -663,13 +659,13 @@ peg::parser! {
             / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier(i)) if i == "__IOSurface"] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
                 pointer_kind: Some(PointerKind::Single),
                 is_const: false,
-                ..FieldLike::default_new(name, TypeSpecifier::Identifier(TypeIdentifier::Struct(Cow::Borrowed("__IOSurface"))))
+                ..FieldLike::default_new(name, TypeSpecifier::Struct(Cow::Borrowed("__IOSurface")))
             }) }}
             / pre:(([VkXMLToken::C(c)] {c.clone()})+) name:name_tag() post:(([VkXMLToken::C(c)] {c.clone()})+) { BaseTypeType::DefineGuarded { pre, name, post } }
 
         /// <type category="define"> ... </type>
         pub rule type_define(name_attr: Option<&'a str>, requires_attr: Option<&'a str>) -> DefineType<'a>
-            = "\n"* is_disabled:("#define" {false} / "//#define" {true}) name:name_tag() value:(
+            = dc:quiet!{([VkXMLToken::C(Token::_DeprecationComment(c))] {c})?} "\n"* is_disabled:("#define" {false} / "//#define" {true}) name:name_tag() value:(
                 "(" params:(identifier() ** ",") ")" expression:(([VkXMLToken::C(c)] {c.clone()})+) {
                     DefineTypeValue::FunctionDefine {
                         params: params.into_boxed_slice(),
@@ -677,7 +673,7 @@ peg::parser! {
                     }
                 }
                 /  e:expr() { DefineTypeValue::Expression(e) }
-                / macro_name:type_tag() "(" args:(expression() ** ",") ","? ")" { DefineTypeValue::MacroFunctionCall {
+                / macro_name:type_tag() "(" args:(expr() ** ",") ","? ")" { DefineTypeValue::MacroFunctionCall {
                     name: macro_name,
                     args: args.into_boxed_slice(),
                 } }
@@ -685,6 +681,7 @@ peg::parser! {
                 name,
                 comment: None,
                 requires: requires_attr.map(Cow::Borrowed),
+                deprecation_comment: dc.cloned(),
                 is_disabled,
                 value,
             } }
@@ -692,7 +689,7 @@ peg::parser! {
                 name_attr.unwrap_or_else(|| panic!("{:?}", l));
                 DefineType {
                 name: name_attr.map(Cow::Borrowed).expect("If no name is found inside the tag <type category=\"define\"> then it must be an attribute"),
-                comment: None, requires: requires_attr.map(Cow::Borrowed), is_disabled: false, value: DefineTypeValue::Code(l.into_boxed_slice())
+                comment: None, requires: requires_attr.map(Cow::Borrowed), deprecation_comment: None, is_disabled: false, value: DefineTypeValue::Code(l.into_boxed_slice())
             } }
 
 
@@ -715,5 +712,38 @@ impl<'a> TryFrom<&'a str> for Expression<'a> {
     fn try_from(value: &'a str) -> Result<Self, Self::Error> {
         let c_toks = Token::lexer(value).into();
         c_with_vk_ext::expr(&c_toks)
+    }
+}
+
+impl<'s, 'a: 's> TryFrom<&'s [Token<'a>]> for Expression<'a> {
+    type Error = peg::error::ParseError<usize>;
+
+    fn try_from(value: &'s [Token<'a>]) -> Result<Self, Self::Error> {
+        let c_toks = VkXMLTokens(value.iter().cloned().map(VkXMLToken::C).collect());
+        c_with_vk_ext::expr(&c_toks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vk_version_patch() {
+        const S: &str = "((uint32_t)(version) & 0xFFFU)";
+        let e = Expression::try_from(S).unwrap();
+        assert_eq!(
+            e,
+            Expression::Binary(
+                BinaryOp::BitwiseAnd,
+                Box::new(Expression::Unary(
+                    UnaryOp::Cast(TypeName::Specifier(TypeSpecifier::TypedefName(
+                        "uint32_t".into()
+                    ))),
+                    Box::new(Expression::Identifier("version".into()))
+                )),
+                Box::new(Expression::Constant(Constant::Integer(0xFFF)))
+            )
+        )
     }
 }

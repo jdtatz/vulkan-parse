@@ -27,6 +27,13 @@ impl<'a, T> MaybeComment<'a, T> {
             MaybeComment::Comment(_) => None,
         }
     }
+
+    pub fn try_as_value(&self) -> Option<&T> {
+        match self {
+            MaybeComment::Value(v) => Some(v),
+            MaybeComment::Comment(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -37,6 +44,10 @@ impl<'a, T: 'a> CommentendChildren<'a, T> {
         Vec::from(self.0)
             .into_iter()
             .filter_map(MaybeComment::try_into_value)
+    }
+
+    pub fn values(&self) -> impl '_ + Iterator<Item = &'_ T> {
+        self.0.iter().filter_map(MaybeComment::try_as_value)
     }
 }
 

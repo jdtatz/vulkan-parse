@@ -113,6 +113,16 @@ impl TokenExtras {
         }
     }
 
+    fn deprecation_comment<'s>(self, comment: &'s str) -> logos::Filter<Cow<'s, str>> {
+        if self.keep_new_lines {
+            logos::Filter::Emit(Cow::Borrowed(
+                comment.strip_prefix("// DEPRECATED:").unwrap(),
+            ))
+        } else {
+            logos::Filter::Skip
+        }
+    }
+
     fn objc_is_err(self) -> logos::FilterResult<()> {
         if self.objc_compat {
             logos::FilterResult::Emit(())
@@ -327,6 +337,9 @@ pub enum Token<'a> {
     #[doc(hidden)]
     #[regex("//#define\\s*")]
     _MalformedDefine,
+    #[doc(hidden)]
+    #[regex(r"// DEPRECATED:[^\n]*", |lex| lex.extras.deprecation_comment(lex.slice()))]
+    _DeprecationComment(Cow<'a, str>),
     #[regex(r"//[^\n]*", logos::skip)]
     Comment,
     #[token("#")]
@@ -459,6 +472,9 @@ impl<'a> Token<'a> {
         match self {
             Token::Identifier(id) => Token::Identifier(Cow::Owned(id.into_owned())),
             Token::Literal(lit) => Token::Literal(Cow::Owned(lit.into_owned())),
+            Token::_DeprecationComment(comment) => {
+                Token::_DeprecationComment(Cow::Owned(comment.into_owned()))
+            }
             Token::Error => Token::Error, // todo!(),
             Token::Constant(c) => Token::Constant(c),
 
@@ -703,6 +719,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::NewLine => writeln!(f),
             Token::Whitespace => write!(f, " "),
             Token::Comment => writeln!(f, "//"),
+            Token::_DeprecationComment(c) => write!(f, "// DEPRECATED:{}", c),
             Token::Identifier(id) => write!(f, "{}", id),
             Token::Constant(c) => write!(f, "{}", c),
             Token::Literal(lit) => {

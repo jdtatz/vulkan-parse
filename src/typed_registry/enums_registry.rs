@@ -61,6 +61,21 @@ pub enum BitmaskEnum<'a> {
     BitPos(BitPosEnum<'a>),
 }
 
+impl<'a> BitmaskEnum<'a> {
+    pub fn name(&self) -> &Cow<'a, str> {
+        match self {
+            BitmaskEnum::Value(v) => &v.name,
+            BitmaskEnum::BitPos(b) => &b.name,
+        }
+    }
+    pub fn comment(&self) -> Option<&Cow<'a, str>> {
+        match self {
+            BitmaskEnum::Value(v) => v.comment.as_ref(),
+            BitmaskEnum::BitPos(b) => b.comment.as_ref(),
+        }
+    }
+}
+
 /// <enums type="enum"> ... <unused /> </<enums>
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnusedEnum<'a> {

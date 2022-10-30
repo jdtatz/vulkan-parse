@@ -88,7 +88,7 @@ pub struct PseudoExtension<'a> {
     pub name: Cow<'a, str>,
     pub supported: ExtensionSupport,
     pub comment: Option<Cow<'a, str>>,
-    pub requires: Box<[Require<'a>]>,
+    pub requires: Vec<Require<'a>>,
 }
 
 impl<'a, 'input> Parse<'a, 'input> for Extension<'a> {
