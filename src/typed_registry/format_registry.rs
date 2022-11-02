@@ -16,7 +16,7 @@ pub struct Format<'a> {
     pub packed: Option<NonZeroU8>,
     pub compressed: Option<FormatCompressionType>,
     pub chroma: Option<FormatChroma>,
-    pub children: Box<[FormatChild<'a>]>,
+    pub children: Vec<FormatChild<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -243,7 +243,7 @@ pub struct FieldLike<'a> {
     pub is_const: bool,
     pub pointer_kind: Option<PointerKind>,
     pub bitfield_size: Option<NonZeroU8>,
-    pub array_shape: Option<Box<[ArrayLength<'a>]>>,
+    pub array_shape: Option<Vec<ArrayLength<'a>>>,
     pub dynamic_shape: Option<DynamicShapeKind<'a>>,
     pub extern_sync: Option<ExternSyncKind<'a>>,
     pub optional: Option<OptionalKind>,
@@ -334,14 +334,14 @@ pub struct DefineType<'a> {
 pub enum DefineTypeValue<'a> {
     Expression(Expression<'a>),
     FunctionDefine {
-        params: Box<[Cow<'a, str>]>,
-        expression: Box<[Token<'a>]>,
+        params: Vec<Cow<'a, str>>,
+        expression: Vec<Token<'a>>,
     },
     MacroFunctionCall {
         name: Cow<'a, str>,
-        args: Box<[Expression<'a>]>,
+        args: Vec<Expression<'a>>,
     },
-    Code(Box<[Token<'a>]>),
+    Code(Vec<Token<'a>>),
 }
 
 impl<'a> DefineTypeValue<'a> {

@@ -39,13 +39,11 @@ impl<'a, T> MaybeComment<'a, T> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct CommentendChildren<'a, T>(pub Box<[MaybeComment<'a, T>]>);
+pub struct CommentendChildren<'a, T>(pub Vec<MaybeComment<'a, T>>);
 
 impl<'a, T: 'a> CommentendChildren<'a, T> {
     pub fn into_values(self) -> impl 'a + Iterator<Item = T> {
-        Vec::from(self.0)
-            .into_iter()
-            .filter_map(MaybeComment::try_into_value)
+        self.0.into_iter().filter_map(MaybeComment::try_into_value)
     }
 
     pub fn values(&self) -> impl '_ + Iterator<Item = &'_ T> {
@@ -54,7 +52,7 @@ impl<'a, T: 'a> CommentendChildren<'a, T> {
 }
 
 impl<'a, T> Deref for CommentendChildren<'a, T> {
-    type Target = Box<[MaybeComment<'a, T>]>;
+    type Target = Vec<MaybeComment<'a, T>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

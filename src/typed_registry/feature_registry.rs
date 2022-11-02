@@ -22,7 +22,7 @@ pub struct Feature<'a> {
     pub api: FeatureApi,
     pub number: SemVarVersion,
     pub comment: Option<Cow<'a, str>>,
-    pub requires: Box<[Require<'a>]>,
+    pub requires: Vec<Require<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

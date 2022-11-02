@@ -338,18 +338,6 @@ pub fn parse_registry<'a, 'input: 'a>(
 
 // Generic Impls
 
-impl<'a, 'input: 'a, T: Parse<'a, 'input>> ParseElements<'a, 'input> for Box<[T]> {
-    type Item = T;
-
-    // type NodeIter = roxmltree::AxisIter<'a, 'input>;
-    type NodeIter = roxmltree::Children<'a, 'input>;
-
-    fn get_nodes(node: Node<'a, 'input>) -> ParseResult<Option<Self::NodeIter>> {
-        // Ok(Some(node.next_siblings()))
-        Ok(Some(node.children()))
-    }
-}
-
 impl<'a, 'input: 'a, T: Parse<'a, 'input>> ParseElements<'a, 'input> for Vec<T> {
     type Item = T;
 

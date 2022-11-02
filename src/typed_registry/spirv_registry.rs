@@ -21,7 +21,7 @@ pub struct SpirvExtension<'a> {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct SpirvCapability<'a> {
     pub name: Cow<'a, str>,
-    pub enables: Box<[EnableSpirvCapability<'a>]>,
+    pub enables: Vec<EnableSpirvCapability<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

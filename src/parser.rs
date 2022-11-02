@@ -84,7 +84,7 @@ pub enum TypeName<'a> {
     Function {
         return_ty: Box<TypeName<'a>>,
         name: Cow<'a, str>,
-        arg_tys: Box<[TypeName<'a>]>,
+        arg_tys: Vec<TypeName<'a>>,
     },
     Qualified(TypeQualifer, Box<TypeName<'a>>),
 }
@@ -172,7 +172,7 @@ pub enum Expression<'a> {
         Box<Expression<'a>>,
         Box<Expression<'a>>,
     ),
-    FunctionCall(Box<Expression<'a>>, Box<[Expression<'a>]>),
+    FunctionCall(Box<Expression<'a>>, Vec<Expression<'a>>),
     Comma(Box<Expression<'a>>, Box<Expression<'a>>),
     Member(MemberAccess, Box<Expression<'a>>, Cow<'a, str>),
     ArrayElement(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -219,7 +219,7 @@ fn wrap_array_access<'a>(v: Expression<'a>, idx: Expression<'a>) -> Expression<'
 }
 
 fn wrap_fn_call<'a>(f: Expression<'a>, args: Vec<Expression<'a>>) -> Expression<'a> {
-    Expression::FunctionCall(Box::new(f), args.into_boxed_slice())
+    Expression::FunctionCall(Box::new(f), args)
 }
 
 // fn wrap_comma<'a>(head: Expression<'a>, tail: Expression<'a>) -> Expression<'a> {
@@ -488,7 +488,7 @@ impl<'input, 's, 'a: 'input> peg::ParseSlice<'input> for VkXMLTokens<'s, 'a> {
 #[derive(Debug)]
 enum BitFieldSizeOrArrayshape<'a> {
     BitfieldSize(NonZeroU8),
-    ArrayShape(Box<[ArrayLength<'a>]>),
+    ArrayShape(Vec<ArrayLength<'a>>),
 }
 
 /// C is not a context-free languge and requires building a symbol table of typedefs at parse time to resolve ambigutites with cast expressions
@@ -646,7 +646,7 @@ peg::parser! {
                 / array_shape:("[" n:(
                     v:integer() { ArrayLength::Static(NonZeroU32::new(v.try_into().unwrap()).unwrap()) }
                     / name:enum_tag() { ArrayLength::Constant(name) }
-                ) "]" { n })+ { BitFieldSizeOrArrayshape::ArrayShape(array_shape.into_boxed_slice()) }
+                ) "]" { n })+ { BitFieldSizeOrArrayshape::ArrayShape(array_shape) }
             )? comment:comment_tag()? {
                 let (bitfield_size, array_shape) = match bitOrArr {
                     Some(BitFieldSizeOrArrayshape::BitfieldSize(size)) => (Some(size), None),
@@ -681,17 +681,9 @@ peg::parser! {
         /// <type category="define"> ... </type>
         pub rule type_define(name_attr: Option<&'a str>, requires_attr: Option<&'a str>) -> DefineType<'a>
             = dc:quiet!{([VkXMLToken::C(Token::_DeprecationComment(c))] {c})?} "\n"* is_disabled:(define_macro() {false} / "//#define" {true}) name:name_tag() value:(
-                "(" params:(identifier() ** ",") ")" expression:(([VkXMLToken::C(c)] {c.clone()})+) {
-                    DefineTypeValue::FunctionDefine {
-                        params: params.into_boxed_slice(),
-                        expression: expression.into_boxed_slice(),
-                    }
-                }
+                "(" params:(identifier() ** ",") ")" expression:(([VkXMLToken::C(c)] {c.clone()})+) { DefineTypeValue::FunctionDefine { params, expression } }
                 /  e:expr() { DefineTypeValue::Expression(e) }
-                / macro_name:type_tag() "(" args:(expr() ** ",") ","? ")" { DefineTypeValue::MacroFunctionCall {
-                    name: macro_name,
-                    args: args.into_boxed_slice(),
-                } }
+                / macro_name:type_tag() "(" args:(expr() ** ",") ","? ")" { DefineTypeValue::MacroFunctionCall { name: macro_name, args } }
             ) { DefineType {
                 name,
                 comment: None,
@@ -704,7 +696,7 @@ peg::parser! {
                 name_attr.unwrap_or_else(|| panic!("{l:?}"));
                 DefineType {
                 name: name_attr.map(Cow::Borrowed).expect("If no name is found inside the tag <type category=\"define\"> then it must be an attribute"),
-                comment: None, requires: requires_attr.map(Cow::Borrowed), deprecation_comment: None, is_disabled: false, value: DefineTypeValue::Code(l.into_boxed_slice())
+                comment: None, requires: requires_attr.map(Cow::Borrowed), deprecation_comment: None, is_disabled: false, value: DefineTypeValue::Code(l)
             } }
 
 

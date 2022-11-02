@@ -9,7 +9,7 @@ use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Command<'a> {
     pub proto: FieldLike<'a>,
-    pub params: Box<[CommandParam<'a>]>,
+    pub params: Vec<CommandParam<'a>>,
 
     pub success_codes: Option<SuccessCodes<'a>>,
     pub error_codes: Option<Vec<Cow<'a, str>>>,
@@ -72,7 +72,7 @@ pub enum Queue {
 pub enum SuccessCodes<'a> {
     /// `successcodes="VK_SUCCESS"`
     DefaultSuccess,
-    Codes(Box<[Cow<'a, str>]>),
+    Codes(Vec<Cow<'a, str>>),
 }
 
 impl<'a> From<&'a str> for SuccessCodes<'a> {

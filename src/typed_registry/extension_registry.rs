@@ -84,7 +84,7 @@ pub struct Extension<'a> {
     pub provisional: Option<bool>,
     pub special_use: Option<Cow<'a, str>>,
     pub comment: Option<Cow<'a, str>>,
-    pub requires: Box<[Require<'a>]>,
+    pub requires: Vec<Require<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
