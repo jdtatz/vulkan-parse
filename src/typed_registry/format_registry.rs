@@ -1,11 +1,11 @@
 use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use crate::{attribute, attribute_fs, try_attribute, try_attribute_fs, Parse, ParseResult};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub struct Format<'a> {
     pub name: Cow<'a, str>,
@@ -19,7 +19,8 @@ pub struct Format<'a> {
     pub children: Box<[FormatChild<'a>]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum FormatChild<'a> {
     Component {
@@ -41,7 +42,8 @@ pub enum FormatChild<'a> {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct BlockExtent(pub NonZeroU8, pub NonZeroU8, pub NonZeroU8);
 
 impl FromStr for BlockExtent {
@@ -64,7 +66,8 @@ impl fmt::Display for BlockExtent {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum FormatChroma {
     #[strum(serialize = "420")]
@@ -75,7 +78,8 @@ pub enum FormatChroma {
     Type444,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum FormatCompressionType {
     #[strum(serialize = "BC")]
@@ -95,7 +99,8 @@ pub enum FormatCompressionType {
     Pvrtc,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum ComponentBits {
     Compressed,
@@ -123,7 +128,8 @@ impl fmt::Display for ComponentBits {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum ComponentNumericFormat {
     SRGB,
@@ -137,7 +143,8 @@ pub enum ComponentNumericFormat {
     SFLOAT,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum ComponentName {
     A,

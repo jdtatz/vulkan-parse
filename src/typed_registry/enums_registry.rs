@@ -4,7 +4,6 @@ use std::{
 };
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
@@ -12,7 +11,8 @@ use crate::{
     Terminated,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Enums<'a> {
     pub name: Cow<'a, str>,
     pub bit_width: Option<NonZeroU8>,
@@ -20,7 +20,8 @@ pub struct Enums<'a> {
     pub values: EnumsValues<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum EnumsValues<'a> {
     /// no type attribute
     Constants(CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>),
@@ -33,7 +34,8 @@ pub enum EnumsValues<'a> {
     Bitmask(CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ConstantEnum<'a> {
     pub name: Cow<'a, str>,
     pub type_name: Cow<'a, str>,
@@ -41,21 +43,24 @@ pub struct ConstantEnum<'a> {
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ValueEnum<'a> {
     pub name: Cow<'a, str>,
     pub value: i64,
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct BitPosEnum<'a> {
     pub name: Cow<'a, str>,
     pub bitpos: u8,
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum BitmaskEnum<'a> {
     Value(ValueEnum<'a>),
     BitPos(BitPosEnum<'a>),
@@ -79,7 +84,8 @@ impl<'a> BitmaskEnum<'a> {
 }
 
 /// <enums type="enum"> ... <unused /> </<enums>
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct UnusedEnum<'a> {
     pub start: i64,
     pub comment: Option<Cow<'a, str>>,

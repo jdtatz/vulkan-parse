@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use super::common::{CommentendChildren, SemVarVersion};
 use crate::{
@@ -9,13 +8,15 @@ use crate::{
     StdVersion,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum FeatureApi {
     #[strum(serialize = "vulkan")]
     Vulkan,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Feature<'a> {
     pub name: Cow<'a, str>,
     pub api: FeatureApi,
@@ -24,7 +25,8 @@ pub struct Feature<'a> {
     pub requires: Box<[Require<'a>]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Require<'a> {
     pub comment: Option<Cow<'a, str>>,
     pub feature: Option<StdVersion>,
@@ -32,7 +34,8 @@ pub struct Require<'a> {
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum RequireValue<'a> {
     Type {
         name: Cow<'a, str>,
@@ -45,7 +48,8 @@ pub enum RequireValue<'a> {
     Enum(RequireEnum<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct RequireEnum<'a> {
     pub name: Option<Cow<'a, str>>,
     pub extends: Option<Cow<'a, str>>,
@@ -54,13 +58,15 @@ pub struct RequireEnum<'a> {
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum OffsetDirection {
     #[strum(serialize = "-")]
     Negative,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum RequireValueEnum<'a> {
     Value(Expression<'a>),
     Alias(Cow<'a, str>),

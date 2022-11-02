@@ -5,8 +5,6 @@ use std::{
     ops::Deref,
 };
 
-use serde::Serialize;
-
 use crate::{
     lexer::tokenize, ArrayLength, BaseTypeType, Constant, DefineType, DefineTypeValue, ErrorKind,
     FieldLike, FnPtrType, ParseResult, PointerKind, Token,
@@ -15,7 +13,8 @@ use crate::{
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
 
 // C Type Decleration types
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum TypeQualifer {
     Const,
@@ -23,7 +22,8 @@ pub enum TypeQualifer {
     Volatile,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum TypeSpecifier<'a> {
     Void,
@@ -72,7 +72,8 @@ impl<'a> TypeSpecifier<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum TypeName<'a> {
     Specifier(TypeSpecifier<'a>),
@@ -95,13 +96,15 @@ enum TypeSpecifierOrQual<'a> {
 
 // C Expression types
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum FixOrder {
     Prefix,
     Postfix,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum ComparisionOp {
     LT,
@@ -112,7 +115,8 @@ pub enum ComparisionOp {
     GT,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 
 pub enum UnaryOp<'a> {
     Address,
@@ -126,7 +130,8 @@ pub enum UnaryOp<'a> {
     Cast(TypeName<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum BinaryOp {
     Addition,
     Subtraction,
@@ -142,7 +147,8 @@ pub enum BinaryOp {
     LogicalOr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum MemberAccess {
     /// '.'
     Direct,
@@ -150,7 +156,8 @@ pub enum MemberAccess {
     Pointer,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Expression<'a> {
     Identifier(Cow<'a, str>),
     Constant(Constant),

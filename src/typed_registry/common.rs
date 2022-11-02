@@ -7,14 +7,15 @@ use std::{
 };
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Comment<'a>(pub Cow<'a, str>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum MaybeComment<'a, T> {
     Value(T),
     Comment(Comment<'a>),
@@ -36,7 +37,8 @@ impl<'a, T> MaybeComment<'a, T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct CommentendChildren<'a, T>(pub Box<[MaybeComment<'a, T>]>);
 
 impl<'a, T: 'a> CommentendChildren<'a, T> {
@@ -71,7 +73,8 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum DefinitionOrAlias<'a, T> {
     Alias {
         name: Cow<'a, str>,
@@ -81,7 +84,8 @@ pub enum DefinitionOrAlias<'a, T> {
     Definition(T),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct SemVarVersion {
     pub major: u32,
     pub minor: u32,
@@ -126,7 +130,8 @@ impl fmt::Display for SemVarVersion {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct StdVersion {
     pub major: u32,
     pub minor: u32,

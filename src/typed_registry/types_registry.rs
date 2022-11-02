@@ -6,7 +6,6 @@ use std::{
 };
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
@@ -14,19 +13,22 @@ use crate::{
     vk_tokenize, Expression, Parse, ParseResult, Token, TypeSpecifier,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum PointerKind {
     Single,
     Double { inner_is_const: bool },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ArrayLength<'a> {
     Static(NonZeroU32),
     Constant(Cow<'a, str>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum DynamicLength<'a> {
     NullTerminated,
     // FIXME only found in VkAccelerationStructureBuildGeometryInfoKHR->ppGeometries, is this a mistake?
@@ -71,7 +73,8 @@ impl<'a> fmt::Display for DynamicLength<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum DynamicShapeKind<'a> {
     Expression {
         latex_expr: Cow<'a, str>,
@@ -81,7 +84,8 @@ pub enum DynamicShapeKind<'a> {
     Double(DynamicLength<'a>, DynamicLength<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum OptionalKind {
     Single(bool),
     Double(bool, bool),
@@ -108,7 +112,8 @@ impl fmt::Display for OptionalKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ExternSyncFieldValue<'a> {
     ValueField(Cow<'a, str>),
     ArrayField(Cow<'a, str>),
@@ -125,13 +130,15 @@ impl<'a> From<&'a str> for ExternSyncFieldValue<'a> {
 }
 
 /// This is likely redundant and may be removed in the future
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ExternSyncParam<'a> {
     ValueParam(Cow<'a, str>),
     ArrayParam(Cow<'a, str>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ExternSyncField<'a> {
     /// This is likely redundant and may be removed in the future
     pub param: ExternSyncParam<'a>,
@@ -174,7 +181,8 @@ impl<'a> TryFrom<&'a str> for ExternSyncField<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
     Value,
@@ -218,14 +226,16 @@ impl<'a> fmt::Display for ExternSyncKind<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
     #[strum(serialize = "true")]
     Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct FieldLike<'a> {
     pub name: Cow<'a, str>,
     pub type_name: TypeSpecifier<'a>,
@@ -265,7 +275,8 @@ impl<'a> FieldLike<'a> {
 }
 
 /// <type>
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Type<'a> {
     /// <type> without category attribute
     Requires(RequiresType<'a>),
@@ -290,14 +301,16 @@ pub enum Type<'a> {
 }
 
 /// <type> without category attribute
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct RequiresType<'a> {
     pub name: Cow<'a, str>,
     pub requires: Option<Cow<'a, str>>,
 }
 
 /// <type category="include">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct IncludeType<'a> {
     pub name: Cow<'a, str>,
     /// #include "{name}" is a local include
@@ -305,7 +318,8 @@ pub struct IncludeType<'a> {
 }
 
 /// <type category="define">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct DefineType<'a> {
     pub name: Cow<'a, str>,
     pub comment: Option<Cow<'a, str>>,
@@ -315,7 +329,8 @@ pub struct DefineType<'a> {
     pub value: DefineTypeValue<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum DefineTypeValue<'a> {
     Expression(Expression<'a>),
     FunctionDefine {
@@ -346,7 +361,8 @@ impl<'a> DefineTypeValue<'a> {
 // NOTE: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
 //       but should be  `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;`
 /// <type category="basetype">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum BaseTypeType<'a> {
     Forward(Cow<'a, str>),
     TypeDef(FieldLike<'a>),
@@ -369,7 +385,8 @@ impl<'a> BaseTypeType<'a> {
 }
 
 /// <type category="bitmask">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct BitmaskType<'a> {
     pub name: Cow<'a, str>,
     pub is_64bits: bool,
@@ -377,7 +394,8 @@ pub struct BitmaskType<'a> {
 }
 
 /// <type category="handle">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct HandleType<'a> {
     pub name: Cow<'a, str>,
     pub handle_kind: HandleKind,
@@ -385,7 +403,8 @@ pub struct HandleType<'a> {
     pub parent: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum HandleKind {
     #[strum(serialize = "VK_DEFINE_HANDLE")]
     Dispatch,
@@ -394,13 +413,15 @@ pub enum HandleKind {
 }
 
 /// <type category="enum">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct EnumType<'a> {
     pub name: Cow<'a, str>,
 }
 
 /// <type category="funcpointer">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct FnPtrType<'a> {
     pub name_and_return: FieldLike<'a>,
     pub requires: Option<Cow<'a, str>>,
@@ -408,7 +429,8 @@ pub struct FnPtrType<'a> {
 }
 
 /// <type category="struct">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct StructType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
@@ -420,7 +442,8 @@ pub struct StructType<'a> {
 }
 
 /// <type category="union">
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct UnionType<'a> {
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
@@ -428,7 +451,8 @@ pub struct UnionType<'a> {
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[non_exhaustive]
 pub enum MemberSelector {
     #[strum(serialize = "type")]
@@ -439,7 +463,8 @@ pub enum MemberSelector {
     GeometryType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[non_exhaustive]
 pub enum MemberLimitType {
     #[strum(serialize = "min")]
@@ -467,7 +492,8 @@ pub enum MemberLimitType {
 }
 
 /// <member>
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Member<'a> {
     pub base: FieldLike<'a>,
     pub selector: Option<MemberSelector>,

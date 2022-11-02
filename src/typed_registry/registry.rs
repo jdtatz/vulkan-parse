@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use super::{
     commands_registry::Command,
@@ -15,10 +14,12 @@ use super::{
 };
 use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Items<'a> {
     Platforms {
         platforms: Vec<Platform<'a>>,
@@ -53,21 +54,24 @@ pub enum Items<'a> {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Platform<'a> {
     pub name: Cow<'a, str>,
     pub protect: Cow<'a, str>,
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Tag<'a> {
     pub name: Cow<'a, str>,
     pub author: Cow<'a, str>,
     pub contact: Cow<'a, str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum WrappedExtension<'a> {
     Extension(Extension<'a>),
     PseudoExtension(PseudoExtension<'a>),

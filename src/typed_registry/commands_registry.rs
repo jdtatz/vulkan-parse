@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use super::FieldLike;
 use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Command<'a> {
     pub proto: FieldLike<'a>,
     pub params: Box<[CommandParam<'a>]>,
@@ -24,26 +24,30 @@ pub struct Command<'a> {
     pub comment: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct CommandParam<'a> {
     pub base: FieldLike<'a>,
     pub valid_structs: Option<Vec<Cow<'a, str>>>,
     pub stride: Option<Cow<'a, str>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ImplicitExternSyncParam<'a> {
     pub description: Cow<'a, str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ImplicitExternSyncParams<'a> {
     pub params: Vec<ImplicitExternSyncParam<'a>>,
 }
 
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Queue {
     #[strum(serialize = "transfer")]
     Transfer,
@@ -63,7 +67,8 @@ pub enum Queue {
     OpticalFlow,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum SuccessCodes<'a> {
     /// `successcodes="VK_SUCCESS"`
     DefaultSuccess,
@@ -93,7 +98,8 @@ impl<'s, 'a: 's> IntoIterator for &'s SuccessCodes<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Renderpass {
     #[strum(serialize = "inside")]
     Inside,
@@ -103,7 +109,8 @@ pub enum Renderpass {
     Both,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum VideoCoding {
     #[strum(serialize = "inside")]
     Inside,
@@ -115,7 +122,8 @@ pub enum VideoCoding {
 
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum CommandBufferLevel {
     #[strum(serialize = "primary")]
     Primary,
@@ -125,7 +133,8 @@ pub enum CommandBufferLevel {
 
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Task {
     #[strum(serialize = "action")]
     Action,

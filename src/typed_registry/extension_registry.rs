@@ -1,7 +1,6 @@
 use std::{borrow::Cow, fmt};
 
 use roxmltree::Node;
-use serde::Serialize;
 
 use super::{
     common::{SemVarVersion, StdVersion},
@@ -9,7 +8,8 @@ use super::{
 };
 use crate::{attribute, try_attribute, try_attribute_fs, try_attribute_sep, Parse, ParseResult};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ExtensionKind {
     #[strum(serialize = "instance")]
     Instance,
@@ -18,7 +18,8 @@ pub enum ExtensionKind {
     // PhysicalDevice,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ExtensionSupport {
     #[strum(serialize = "vulkan")]
     Vulkan,
@@ -28,13 +29,15 @@ pub enum ExtensionSupport {
 
 // FIXME Unsure of the sortorder attribute's purpose,
 //  may be better to be an Option<NonZeroU8> if it's a versioning attr
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum SortOrder {
     #[strum(serialize = "1")]
     One,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ExtensionPromotion<'a> {
     Core(StdVersion),
     Extension(Cow<'a, str>),
@@ -59,7 +62,8 @@ impl<'a> fmt::Display for ExtensionPromotion<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct Extension<'a> {
     pub name: Cow<'a, str>,
     pub number: u32,
@@ -83,7 +87,8 @@ pub struct Extension<'a> {
     pub requires: Box<[Require<'a>]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct PseudoExtension<'a> {
     pub name: Cow<'a, str>,
     pub supported: ExtensionSupport,

@@ -2,7 +2,6 @@ use std::{fmt, str::FromStr};
 
 pub use roxmltree::Document;
 use roxmltree::{Node, NodeId};
-use serde::Serialize;
 
 use crate::{Container, LexerError, ParseError, Registry, Seperated};
 
@@ -301,7 +300,7 @@ pub(crate) fn parse_terminated<
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Terminated<V, T>(pub V, pub Option<T>);
 
 impl<V, T> Terminated<V, T> {

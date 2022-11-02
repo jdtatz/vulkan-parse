@@ -18,7 +18,7 @@ serde = {version = "1", features = ["derive"], optional = true }
 quick-xml = {version = "0.25", optional = true}
 
 [features]
-default = ["serialize"]
+default = []
 serialize = ["serde", "enumflags2/serde"]
 roundtrip = ["quick-xml"]
 

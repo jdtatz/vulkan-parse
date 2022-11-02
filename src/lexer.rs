@@ -1,7 +1,6 @@
 use std::{borrow::Cow, fmt, ops::Range, str::FromStr};
 
 use logos::{Lexer, Logos};
-use serde::Serialize;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Error {
@@ -57,7 +56,8 @@ pub(crate) fn tokenize(
     ResultIter::from(Lexer::with_extras(src, extras))
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Constant {
     Char(u8),
     Integer(u64),
@@ -153,7 +153,8 @@ impl TokenExtras {
     }
 }
 
-#[derive(Logos, Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Logos, Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 #[logos(extras = TokenExtras)]
 #[logos(subpattern decimal = r"[1-9][0-9]*")]
 #[logos(subpattern hex = r"[0-9a-fA-F]+")]
