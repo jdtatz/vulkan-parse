@@ -62,12 +62,14 @@ pub enum BitmaskEnum<'a> {
 }
 
 impl<'a> BitmaskEnum<'a> {
+    #[must_use]
     pub fn name(&self) -> &Cow<'a, str> {
         match self {
             BitmaskEnum::Value(v) => &v.name,
             BitmaskEnum::BitPos(b) => &b.name,
         }
     }
+    #[must_use]
     pub fn comment(&self) -> Option<&Cow<'a, str>> {
         match self {
             BitmaskEnum::Value(v) => v.comment.as_ref(),

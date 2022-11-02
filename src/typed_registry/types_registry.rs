@@ -61,11 +61,11 @@ impl<'a> fmt::Display for DynamicLength<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DynamicLength::NullTerminated => write!(f, "null-terminated"),
-            DynamicLength::Static(n) => write!(f, "{}", n),
-            DynamicLength::Parameterized(p) => write!(f, "{}", p),
+            DynamicLength::Static(n) => write!(f, "{n}"),
+            DynamicLength::Parameterized(p) => write!(f, "{p}"),
             DynamicLength::ParameterizedField { parameter, field } => {
                 // write!(f, "{}-&gt;{}", parameter, field)
-                write!(f, "{}->{}", parameter, field)
+                write!(f, "{parameter}->{field}")
             }
         }
     }
@@ -102,8 +102,8 @@ impl FromStr for OptionalKind {
 impl fmt::Display for OptionalKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OptionalKind::Single(b) => write!(f, "{}", b),
-            OptionalKind::Double(b1, b2) => write!(f, "{},{}", b1, b2),
+            OptionalKind::Single(b) => write!(f, "{b}"),
+            OptionalKind::Double(b1, b2) => write!(f, "{b1},{b2}"),
         }
     }
 }
@@ -199,12 +199,12 @@ impl<'a> TryFrom<&'a str> for ExternSyncKind<'a> {
 impl<'a> fmt::Display for ExternSyncField<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.param {
-            ExternSyncParam::ValueParam(p) => write!(f, "{}->", p),
-            ExternSyncParam::ArrayParam(p) => write!(f, "{}[].", p),
+            ExternSyncParam::ValueParam(p) => write!(f, "{p}->"),
+            ExternSyncParam::ArrayParam(p) => write!(f, "{p}[]."),
         }?;
         match &self.field {
-            ExternSyncFieldValue::ValueField(v) => write!(f, "{}", v),
-            ExternSyncFieldValue::ArrayField(v) => write!(f, "{}[]", v),
+            ExternSyncFieldValue::ValueField(v) => write!(f, "{v}"),
+            ExternSyncFieldValue::ArrayField(v) => write!(f, "{v}[]"),
         }
     }
 }
@@ -330,6 +330,7 @@ pub enum DefineTypeValue<'a> {
 }
 
 impl<'a> DefineTypeValue<'a> {
+    #[must_use]
     pub fn as_expr(&self) -> Option<Cow<'_, Expression<'a>>> {
         match self {
             Self::Expression(e) => Some(Cow::Borrowed(e)),

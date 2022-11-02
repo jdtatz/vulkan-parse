@@ -119,7 +119,7 @@ impl FromStr for SemVarVersion {
 impl fmt::Display for SemVarVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(patch) = self.patch {
-            write!(f, "{}.{}.{}", self.major, self.minor, patch)
+            write!(f, "{}.{}.{patch}", self.major, self.minor)
         } else {
             write!(f, "{}.{}", self.major, self.minor)
         }

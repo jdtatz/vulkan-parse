@@ -60,7 +60,7 @@ impl FromStr for BlockExtent {
 impl fmt::Display for BlockExtent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let BlockExtent(x, y, z) = self;
-        write!(f, "{},{},{}", x, y, z)
+        write!(f, "{x},{y},{z}")
     }
 }
 
@@ -118,7 +118,7 @@ impl fmt::Display for ComponentBits {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Compressed => write!(f, "compressed"),
-            Self::Bits(b) => write!(f, "{}", b),
+            Self::Bits(b) => write!(f, "{b}"),
         }
     }
 }

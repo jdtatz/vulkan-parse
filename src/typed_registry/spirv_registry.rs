@@ -54,9 +54,9 @@ impl<'a> TryFrom<&'a str> for EnableRequires<'a> {
 impl<'a> fmt::Display for EnableRequires<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EnableRequires::Core(v) => write!(f, "{}", v),
-            EnableRequires::Extension(e) => write!(f, "{}", e),
-            EnableRequires::Mix(v, e) => write!(f, "{},{}", v, e),
+            EnableRequires::Core(v) => write!(f, "{v}"),
+            EnableRequires::Extension(e) => write!(f, "{e}"),
+            EnableRequires::Mix(v, e) => write!(f, "{v},{e}"),
         }
     }
 }

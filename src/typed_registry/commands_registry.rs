@@ -87,8 +87,8 @@ impl<'s, 'a: 's> IntoIterator for &'s SuccessCodes<'a> {
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            SuccessCodes::DefaultSuccess => (&[Cow::Borrowed("VK_SUCCESS")]).into_iter(),
-            SuccessCodes::Codes(codes) => codes.into_iter(),
+            SuccessCodes::DefaultSuccess => [Cow::Borrowed("VK_SUCCESS")].iter(),
+            SuccessCodes::Codes(codes) => codes.iter(),
         }
     }
 }

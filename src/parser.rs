@@ -54,6 +54,7 @@ impl<'a> TypeSpecifier<'a> {
         }
     }
 
+    #[must_use]
     pub fn as_identifier(&self) -> &str {
         match self {
             TypeSpecifier::Void => "void",
@@ -63,10 +64,10 @@ impl<'a> TypeSpecifier<'a> {
             TypeSpecifier::Long => "long",
             TypeSpecifier::Float => "float",
             TypeSpecifier::Double => "double",
-            TypeSpecifier::Struct(id) => id,
-            TypeSpecifier::Union(id) => id,
-            TypeSpecifier::Enum(id) => id,
-            TypeSpecifier::TypedefName(id) => id,
+            TypeSpecifier::Struct(id)
+            | TypeSpecifier::Union(id)
+            | TypeSpecifier::Enum(id)
+            | TypeSpecifier::TypedefName(id) => id,
         }
     }
 }
@@ -228,10 +229,10 @@ impl fmt::Display for TypeSpecifier<'_> {
             TypeSpecifier::Long => write!(f, "long"),
             TypeSpecifier::Float => write!(f, "float"),
             TypeSpecifier::Double => write!(f, "double"),
-            TypeSpecifier::Struct(ident) => write!(f, "struct {}", ident),
-            TypeSpecifier::Union(ident) => write!(f, "union {}", ident),
-            TypeSpecifier::Enum(ident) => write!(f, "enum {}", ident),
-            TypeSpecifier::TypedefName(ident) => write!(f, "{}", ident),
+            TypeSpecifier::Struct(ident) => write!(f, "struct {ident}"),
+            TypeSpecifier::Union(ident) => write!(f, "union {ident}"),
+            TypeSpecifier::Enum(ident) => write!(f, "enum {ident}"),
+            TypeSpecifier::TypedefName(ident) => write!(f, "{ident}"),
         }
     }
 }
@@ -253,7 +254,7 @@ impl fmt::Display for UnaryOp<'_> {
             UnaryOp::LogicalNegation => write!(f, "!"),
             UnaryOp::Increment(_) => write!(f, "++"),
             UnaryOp::Decrement(_) => write!(f, "--"),
-            UnaryOp::Cast(ty) => write!(f, "({})", ty),
+            UnaryOp::Cast(ty) => write!(f, "({ty})"),
         }
     }
 }
@@ -318,9 +319,9 @@ impl fmt::Display for MaybeParenWrap<'_, '_> {
 impl fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Identifier(id) => write!(f, "{}", id),
-            Expression::Constant(c) => write!(f, "{}", c),
-            Expression::Literal(lit) => write!(f, "{:?}", lit),
+            Expression::Identifier(id) => write!(f, "{id}"),
+            Expression::Constant(c) => write!(f, "{c}"),
+            Expression::Literal(lit) => write!(f, "{lit:?}"),
             Expression::SizeOf(_) => todo!(),
             Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
                 write!(f, "{}++", MaybeParenWrap(e))
@@ -328,27 +329,27 @@ impl fmt::Display for Expression<'_> {
             Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => {
                 write!(f, "{}--", MaybeParenWrap(e))
             }
-            Expression::Unary(op, e) => write!(f, "{}{}", op, MaybeParenWrap(e)),
+            Expression::Unary(op, e) => write!(f, "{op}{}", MaybeParenWrap(e)),
             Expression::Binary(op, l, r) => {
-                write!(f, "{} {} {}", MaybeParenWrap(l), op, MaybeParenWrap(r))
+                write!(f, "{} {op} {}", MaybeParenWrap(l), MaybeParenWrap(r))
             }
             Expression::Comparision(op, l, r) => {
-                write!(f, "{} {} {}", MaybeParenWrap(l), op, MaybeParenWrap(r))
+                write!(f, "{} {op} {}", MaybeParenWrap(l), MaybeParenWrap(r))
             }
             Expression::Assignment(_, _, _) => todo!(),
-            Expression::TernaryIfElse(cond, et, ef) => write!(f, "{} ? {} : {}", cond, et, ef),
+            Expression::TernaryIfElse(cond, et, ef) => write!(f, "{cond} ? {et} : {ef}"),
             Expression::FunctionCall(func, args) => {
-                write!(f, "{}(", func)?;
+                write!(f, "{func}(")?;
                 for arg in args.iter() {
-                    write!(f, "{}, ", arg)?;
+                    write!(f, "{arg}, ")?;
                 }
                 write!(f, ")")
             }
             Expression::Comma(head, tail) => {
                 write!(f, "{} , {}", MaybeParenWrap(head), MaybeParenWrap(tail))
             }
-            Expression::Member(access, v, member) => write!(f, "{}{}{}", v, access, member),
-            Expression::ArrayElement(e, i) => write!(f, "{}[{}]", e, i),
+            Expression::Member(access, v, member) => write!(f, "{v}{access}{member}"),
+            Expression::ArrayElement(e, i) => write!(f, "{e}[{i}]"),
         }
     }
 }
@@ -365,8 +366,8 @@ pub enum VkXMLToken<'a> {
 impl<'a> fmt::Display for VkXMLToken<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            VkXMLToken::C(token) => write!(f, "{}", token),
-            VkXMLToken::TextTag { name, text } => write!(f, "<{0}>{1}</{0}>", name, text),
+            VkXMLToken::C(token) => write!(f, "{token}"),
+            VkXMLToken::TextTag { name, text } => write!(f, "<{name}>{text}</{name}>"),
         }
     }
 }
@@ -454,8 +455,11 @@ impl<'input: 's, 's, 'a> peg::ParseElem<'input> for VkXMLTokens<'s, 'a> {
 impl<'s, 'a> peg::ParseLiteral for VkXMLTokens<'s, 'a> {
     fn parse_string_literal(&self, pos: usize, literal: &str) -> peg::RuleResult<()> {
         if let Some(VkXMLToken::C(tok)) = self.get(pos) {
-            let literal_token =
-                Token::from_literal(literal).unwrap_or_else(|| panic!("I'm dum {:?}", literal));
+            let literal_token = Token::from_literal(literal).unwrap_or_else(|| {
+                unreachable!(
+                    "This shouldn't even be possible, {literal:?} doesn't have a matching token."
+                )
+            });
             if &literal_token == tok {
                 peg::RuleResult::Matched(pos + 1, ())
             } else {
@@ -685,7 +689,7 @@ peg::parser! {
                 value,
             } }
             / l:(([VkXMLToken::C(c)] {c.clone()})+) {
-                name_attr.unwrap_or_else(|| panic!("{:?}", l));
+                name_attr.unwrap_or_else(|| panic!("{l:?}"));
                 DefineType {
                 name: name_attr.map(Cow::Borrowed).expect("If no name is found inside the tag <type category=\"define\"> then it must be an attribute"),
                 comment: None, requires: requires_attr.map(Cow::Borrowed), deprecation_comment: None, is_disabled: false, value: DefineTypeValue::Code(l.into_boxed_slice())

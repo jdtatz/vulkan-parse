@@ -85,8 +85,8 @@ impl fmt::Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Constant::Char(c) => write!(f, "'{}'", (*c) as char),
-            Constant::Integer(i) => write!(f, "{}", i),
-            Constant::Float(n) => write!(f, "{}", n),
+            Constant::Integer(i) => write!(f, "{i}"),
+            Constant::Float(n) => write!(f, "{n}"),
         }
     }
 }
@@ -136,7 +136,7 @@ impl TokenExtras {
         }
     }
 
-    fn deprecation_comment<'s>(self, comment: &'s str) -> logos::Filter<Cow<'s, str>> {
+    fn deprecation_comment(self, comment: &str) -> logos::Filter<Cow<'_, str>> {
         if self.keep_new_lines {
             logos::Filter::Emit(Cow::Borrowed(
                 comment.strip_prefix("// DEPRECATED:").unwrap(),
@@ -597,54 +597,53 @@ impl<'a> Token<'a> {
         }
     }
 
+    #[must_use]
     pub fn is_ident_like(&self) -> bool {
-        match self {
-            Token::Auto => true,
-            Token::Break => true,
-            Token::Case => true,
-            Token::Char => true,
-            Token::Const => true,
-            Token::Continue => true,
-            Token::Default => true,
-            Token::Do => true,
-            Token::Double => true,
-            Token::Else => true,
-            Token::Enum => true,
-            Token::Extern => true,
-            Token::Float => true,
-            Token::For => true,
-            Token::Goto => true,
-            Token::If => true,
-            Token::Inline => true,
-            Token::Int => true,
-            Token::Long => true,
-            Token::Register => true,
-            Token::Restrict => true,
-            Token::Return => true,
-            Token::Short => true,
-            Token::Signed => true,
-            Token::SizeOf => true,
-            Token::Static => true,
-            Token::Struct => true,
-            Token::Switch => true,
-            Token::TypeDef => true,
-            Token::Union => true,
-            Token::UnSigned => true,
-            Token::Void => true,
-            Token::Volatile => true,
-            Token::While => true,
-            Token::Bool => true,
-            Token::Complex => true,
-            Token::Imaginary => true,
-
-            Token::_MalformedDefine => true,
-            Token::Define => true,
-            Token::Identifier(_) => true,
-            Token::Constant(_) => true,
-            Token::Literal(_) => true,
-
-            _ => false,
-        }
+        matches!(
+            self,
+            Token::Auto
+                | Token::Break
+                | Token::Case
+                | Token::Char
+                | Token::Const
+                | Token::Continue
+                | Token::Default
+                | Token::Do
+                | Token::Double
+                | Token::Else
+                | Token::Enum
+                | Token::Extern
+                | Token::Float
+                | Token::For
+                | Token::Goto
+                | Token::If
+                | Token::Inline
+                | Token::Int
+                | Token::Long
+                | Token::Register
+                | Token::Restrict
+                | Token::Return
+                | Token::Short
+                | Token::Signed
+                | Token::SizeOf
+                | Token::Static
+                | Token::Struct
+                | Token::Switch
+                | Token::TypeDef
+                | Token::Union
+                | Token::UnSigned
+                | Token::Void
+                | Token::Volatile
+                | Token::While
+                | Token::Bool
+                | Token::Complex
+                | Token::Imaginary
+                | Token::_MalformedDefine
+                | Token::Define
+                | Token::Identifier(_)
+                | Token::Constant(_)
+                | Token::Literal(_)
+        )
     }
 }
 
@@ -743,13 +742,13 @@ impl<'a> fmt::Display for Token<'a> {
             Token::NewLine => writeln!(f),
             Token::Whitespace => write!(f, " "),
             Token::Comment => writeln!(f, "//"),
-            Token::_DeprecationComment(c) => write!(f, "// DEPRECATED:{}", c),
-            Token::Identifier(id) => write!(f, "{}", id),
-            Token::Constant(c) => write!(f, "{}", c),
+            Token::_DeprecationComment(c) => write!(f, "// DEPRECATED:{c}"),
+            Token::Identifier(id) => write!(f, "{id}"),
+            Token::Constant(c) => write!(f, "{c}"),
             Token::Literal(lit) => {
                 let lit: &str = lit;
                 // FIXME
-                write!(f, "{:?}", lit)
+                write!(f, "{lit:?}")
             }
             Token::Error => Ok(()),
             // Token::Error => unreachable!(),

@@ -1,5 +1,5 @@
 #![warn(clippy::all, clippy::pedantic)]
-#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_errors_doc, clippy::too_many_lines)]
 
 #[cfg(feature = "roundtrip")]
 pub mod into_xml;
@@ -27,9 +27,9 @@ where
     for v in values {
         if is_first {
             is_first = false;
-            write!(f, "{}", v)?;
+            write!(f, "{v}")?;
         } else {
-            write!(f, "{}{}", separator, v)?;
+            write!(f, "{separator}{v}")?;
         }
     }
     Ok(())
