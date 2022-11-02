@@ -493,11 +493,11 @@ pub(crate) fn is_typedef_name(name: &str) -> bool {
 peg::parser! {
     pub grammar c_with_vk_ext<'s, 'a>() for VkXMLTokens<'s, 'a> {
         pub rule identifier() -> Cow<'a, str>
-          = quiet!{[VkXMLToken::C(Token::Identifier(i))] { i.clone() }}
+          = quiet!{[VkXMLToken::C(Token::Identifier(i))] { Cow::Borrowed(*i) }}
           / expected!("Identifier")
 
         rule typedef_name() -> Cow<'a, str>
-          = quiet!{[VkXMLToken::C(Token::Identifier(i)) if is_typedef_name(i)] { i.clone() }}
+          = quiet!{[VkXMLToken::C(Token::Identifier(i)) if is_typedef_name(i)] { Cow::Borrowed(*i) }}
           / expected!("Typedef Name")
 
         rule type_specifier() -> TypeSpecifier<'a>
@@ -659,16 +659,21 @@ peg::parser! {
             = "struct" name:name_tag() ";" { BaseTypeType::Forward(name) }
             / "typedef" typed:typed_tag(<name_tag()>) ";" { BaseTypeType::TypeDef(typed) }
             // Workaround because it should be `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;` not `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
-            / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier(i)) if i == "__IOSurface"] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
+            / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier(i)) if *i == "__IOSurface"] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
                 pointer_kind: Some(PointerKind::Single),
                 is_const: false,
                 ..FieldLike::default_new(name, TypeSpecifier::Struct(Cow::Borrowed("__IOSurface")))
             }) }}
             / pre:(([VkXMLToken::C(c)] {c.clone()})+) name:name_tag() post:(([VkXMLToken::C(c)] {c.clone()})+) { BaseTypeType::DefineGuarded { pre, name, post } }
 
+
+        rule define_macro()
+         = quiet!{"#" [VkXMLToken::C(Token::Identifier(i)) if *i == "define"]}
+         / expected!("#define")
+
         /// <type category="define"> ... </type>
         pub rule type_define(name_attr: Option<&'a str>, requires_attr: Option<&'a str>) -> DefineType<'a>
-            = dc:quiet!{([VkXMLToken::C(Token::_DeprecationComment(c))] {c})?} "\n"* is_disabled:("#define" {false} / "//#define" {true}) name:name_tag() value:(
+            = dc:quiet!{([VkXMLToken::C(Token::_DeprecationComment(c))] {c})?} "\n"* is_disabled:(define_macro() {false} / "//#define" {true}) name:name_tag() value:(
                 "(" params:(identifier() ** ",") ")" expression:(([VkXMLToken::C(c)] {c.clone()})+) {
                     DefineTypeValue::FunctionDefine {
                         params: params.into_boxed_slice(),
@@ -684,7 +689,7 @@ peg::parser! {
                 name,
                 comment: None,
                 requires: requires_attr.map(Cow::Borrowed),
-                deprecation_comment: dc.cloned(),
+                deprecation_comment: dc.map(|v| Cow::Borrowed(*v)),
                 is_disabled,
                 value,
             } }
@@ -697,7 +702,7 @@ peg::parser! {
 
 
         rule vkapi_ptr_macro()
-            = quiet!{[VkXMLToken::C(Token::Identifier(id)) if id == "VKAPI_PTR"]}
+            = quiet!{[VkXMLToken::C(Token::Identifier(id)) if *id == "VKAPI_PTR"]}
             / expected!("VKAPI_PTR")
 
         /// <type category="funcptr"> ... </type>

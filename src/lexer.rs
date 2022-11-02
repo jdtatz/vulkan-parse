@@ -136,11 +136,9 @@ impl TokenExtras {
         }
     }
 
-    fn deprecation_comment(self, comment: &str) -> logos::Filter<Cow<'_, str>> {
+    fn deprecation_comment(self, comment: &str) -> logos::Filter<&str> {
         if self.keep_new_lines {
-            logos::Filter::Emit(Cow::Borrowed(
-                comment.strip_prefix("// DEPRECATED:").unwrap(),
-            ))
+            logos::Filter::Emit(comment.strip_prefix("// DEPRECATED:").unwrap())
         } else {
             logos::Filter::Skip
         }
@@ -362,7 +360,7 @@ pub enum Token<'a> {
     _MalformedDefine,
     #[doc(hidden)]
     #[regex(r"// DEPRECATED:[^\n]*", |lex| lex.extras.deprecation_comment(lex.slice()))]
-    _DeprecationComment(Cow<'a, str>),
+    _DeprecationComment(&'a str),
     #[regex(r"//[^\n]*", logos::skip)]
     Comment,
     #[token("#")]
@@ -371,11 +369,9 @@ pub enum Token<'a> {
     DoublePound,
     #[regex(r"\\[ \t\r\f]*\n", logos::skip)]
     BackSlash,
-    #[token("#define")]
-    Define,
 
-    #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |lex| Cow::Borrowed(lex.slice()))]
-    Identifier(Cow<'a, str>),
+    #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |lex| lex.slice())]
+    Identifier(&'a str),
     #[regex("0(?&int_suffix)?", |_lex| Constant::Integer(0))]
     #[regex("(?&decimal)(?&int_suffix)?", |lex| lex.slice().trim_end_matches(IS).parse().map(Constant::Integer))]
     #[regex("0(?&octal)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[1..].trim_end_matches(IS), 8).map(Constant::Integer))]
@@ -483,117 +479,10 @@ impl<'a> Token<'a> {
             "#" => Some(Token::Pound),
             "##" => Some(Token::DoublePound),
             "\\" => Some(Token::BackSlash),
-            "#define" => Some(Token::Define),
             "//#define" => Some(Token::_MalformedDefine),
             "\n" => Some(Token::NewLine),
             " " => Some(Token::Whitespace),
             _ => None,
-        }
-    }
-
-    #[must_use]
-    pub fn into_owned(self) -> Token<'static> {
-        match self {
-            Token::Identifier(id) => Token::Identifier(Cow::Owned(id.into_owned())),
-            Token::Literal(lit) => Token::Literal(Cow::Owned(lit.into_owned())),
-            Token::_DeprecationComment(comment) => {
-                Token::_DeprecationComment(Cow::Owned(comment.into_owned()))
-            }
-            Token::Error => Token::Error, // todo!(),
-            Token::Constant(c) => Token::Constant(c),
-
-            Token::Auto => Token::Auto,
-            Token::Break => Token::Break,
-            Token::Case => Token::Case,
-            Token::Char => Token::Char,
-            Token::Const => Token::Const,
-            Token::Continue => Token::Continue,
-            Token::Default => Token::Default,
-            Token::Do => Token::Do,
-            Token::Double => Token::Double,
-            Token::Else => Token::Else,
-            Token::Enum => Token::Enum,
-            Token::Extern => Token::Extern,
-            Token::Float => Token::Float,
-            Token::For => Token::For,
-            Token::Goto => Token::Goto,
-            Token::If => Token::If,
-            Token::Inline => Token::Inline,
-            Token::Int => Token::Int,
-            Token::Long => Token::Long,
-            Token::Register => Token::Register,
-            Token::Restrict => Token::Restrict,
-            Token::Return => Token::Return,
-            Token::Short => Token::Short,
-            Token::Signed => Token::Signed,
-            Token::SizeOf => Token::SizeOf,
-            Token::Static => Token::Static,
-            Token::Struct => Token::Struct,
-            Token::Switch => Token::Switch,
-            Token::TypeDef => Token::TypeDef,
-            Token::Union => Token::Union,
-            Token::UnSigned => Token::UnSigned,
-            Token::Void => Token::Void,
-            Token::Volatile => Token::Volatile,
-            Token::While => Token::While,
-            Token::Bool => Token::Bool,
-            Token::Complex => Token::Complex,
-            Token::Imaginary => Token::Imaginary,
-            Token::LBrack => Token::LBrack,
-            Token::RBrack => Token::RBrack,
-            Token::LParen => Token::LParen,
-            Token::RParen => Token::RParen,
-            Token::LBrace => Token::LBrace,
-            Token::RBrace => Token::RBrace,
-            Token::Dot => Token::Dot,
-            Token::Point => Token::Point,
-            Token::Increment => Token::Increment,
-            Token::Decrement => Token::Decrement,
-            Token::Ampersand => Token::Ampersand,
-            Token::MulStar => Token::MulStar,
-            Token::Plus => Token::Plus,
-            Token::Minus => Token::Minus,
-            Token::Tilde => Token::Tilde,
-            Token::Exclamation => Token::Exclamation,
-            Token::Slash => Token::Slash,
-            Token::Percent => Token::Percent,
-            Token::LShift => Token::LShift,
-            Token::RShift => Token::RShift,
-            Token::LessThan => Token::LessThan,
-            Token::GreaterThan => Token::GreaterThan,
-            Token::LessThanEqual => Token::LessThanEqual,
-            Token::GreaterThanEqual => Token::GreaterThanEqual,
-            Token::Equal => Token::Equal,
-            Token::NotEqual => Token::NotEqual,
-            Token::Caret => Token::Caret,
-            Token::VerticalBar => Token::VerticalBar,
-            Token::And => Token::And,
-            Token::Or => Token::Or,
-            Token::Question => Token::Question,
-            Token::Colon => Token::Colon,
-            Token::SemiColon => Token::SemiColon,
-            Token::Ellipsis => Token::Ellipsis,
-            Token::Assign => Token::Assign,
-            Token::MulAssign => Token::MulAssign,
-            Token::DivAssign => Token::DivAssign,
-            Token::RemAssign => Token::RemAssign,
-            Token::AddAssign => Token::AddAssign,
-            Token::SubAssign => Token::SubAssign,
-            Token::LShiftAssign => Token::LShiftAssign,
-            Token::RShiftAssign => Token::RShiftAssign,
-            Token::AndAssign => Token::AndAssign,
-            Token::OrAssign => Token::OrAssign,
-            Token::XorAssign => Token::XorAssign,
-            Token::Comma => Token::Comma,
-            Token::ObjectiveCAt => Token::ObjectiveCAt,
-            Token::Pound => Token::Pound,
-            Token::DoublePound => Token::DoublePound,
-            Token::BackSlash => Token::BackSlash,
-            Token::_MalformedDefine => Token::_MalformedDefine,
-            Token::NewLine => Token::NewLine,
-            Token::Whitespace => Token::Whitespace,
-            Token::Comment => Token::Comment,
-            Token::Define => Token::Define,
         }
     }
 
@@ -639,7 +528,6 @@ impl<'a> Token<'a> {
                 | Token::Complex
                 | Token::Imaginary
                 | Token::_MalformedDefine
-                | Token::Define
                 | Token::Identifier(_)
                 | Token::Constant(_)
                 | Token::Literal(_)
@@ -752,7 +640,6 @@ impl<'a> fmt::Display for Token<'a> {
             }
             Token::Error => Ok(()),
             // Token::Error => unreachable!(),
-            Token::Define => write!(f, "#define"),
         }?;
         // write!(f, " ")
         Ok(())
