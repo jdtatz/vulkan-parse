@@ -5,14 +5,14 @@ use std::{
     ops::Deref,
 };
 
-use logos::{Lexer, Logos};
 use serde::Serialize;
 
 use crate::{
-    lexer::ResultIter as LexerResultIter, ArrayLength, BaseTypeType, Constant, DefineType,
-    DefineTypeValue, ErrorKind, FieldLike, FnPtrType, ParseResult, PointerKind, Token, TokenExtras,
+    lexer::tokenize, ArrayLength, BaseTypeType, Constant, DefineType, DefineTypeValue, ErrorKind,
+    FieldLike, FnPtrType, ParseResult, PointerKind, Token,
 };
-// Using the C grammer from https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1124.pdf
+// Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
+// the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
 
 // C Type Decleration types
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -388,9 +388,9 @@ impl<'s, 'a: 's> FromIterator<VkXMLToken<'a>> for VkXMLTokens<'s, 'a> {
     }
 }
 
-impl<'s, 'a: 's> From<Lexer<'a, Token<'a>>> for VkXMLTokens<'s, 'a> {
-    fn from(lex: Lexer<'a, Token<'a>>) -> Self {
-        lex.into_iter().map(VkXMLToken::C).collect()
+impl<'s, 'a: 's> FromIterator<Token<'a>> for VkXMLTokens<'s, 'a> {
+    fn from_iter<T: IntoIterator<Item = Token<'a>>>(iter: T) -> Self {
+        VkXMLTokens(Cow::Owned(iter.into_iter().map(VkXMLToken::C).collect()))
     }
 }
 
@@ -410,11 +410,7 @@ pub(crate) fn vk_tokenize<'s, 'a: 's, 'input>(
                     text: Cow::Borrowed(text),
                 })]
             } else {
-                let extras = TokenExtras {
-                    keep_new_lines: parsing_macros,
-                    objc_compat,
-                };
-                LexerResultIter::from(Lexer::with_extras(text, extras))
+                tokenize(text, parsing_macros, objc_compat)
                     .into_iter()
                     .map(|r| {
                         r.map(VkXMLToken::C)
@@ -440,6 +436,9 @@ impl<'s, 'a> peg::Parse for VkXMLTokens<'s, 'a> {
         pos
     }
 }
+
+pub type ParseError =
+    peg::error::ParseError<<VkXMLTokens<'static, 'static> as peg::Parse>::PositionRepr>;
 
 impl<'input: 's, 's, 'a> peg::ParseElem<'input> for VkXMLTokens<'s, 'a> {
     type Element = &'s VkXMLToken<'a>;
@@ -706,12 +705,39 @@ peg::parser! {
   }
 }
 
+#[derive(Debug, Clone)]
+pub enum TextError {
+    Lexer(crate::lexer::Error),
+    Parser(ParseError),
+}
+
+impl fmt::Display for TextError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TextError::Lexer(_) => write!(f, "Lexer error"),
+            TextError::Parser(_) => write!(f, "Parser error"),
+        }
+    }
+}
+
+impl std::error::Error for TextError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            TextError::Lexer(e) => Some(e),
+            TextError::Parser(e) => Some(e),
+        }
+    }
+}
+
 impl<'a> TryFrom<&'a str> for Expression<'a> {
-    type Error = peg::error::ParseError<usize>;
+    type Error = TextError;
 
     fn try_from(value: &'a str) -> Result<Self, Self::Error> {
-        let c_toks = Token::lexer(value).into();
-        c_with_vk_ext::expr(&c_toks)
+        let c_toks = tokenize(value, false, false)
+            .into_iter()
+            .collect::<Result<_, _>>()
+            .map_err(TextError::Lexer)?;
+        c_with_vk_ext::expr(&c_toks).map_err(TextError::Parser)
     }
 }
 

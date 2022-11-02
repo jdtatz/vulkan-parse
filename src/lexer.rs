@@ -45,6 +45,18 @@ where
     }
 }
 
+pub(crate) fn tokenize(
+    src: &str,
+    parsing_macros: bool,
+    objc_compat: bool,
+) -> ResultIter<'_, Token> {
+    let extras = TokenExtras {
+        keep_new_lines: parsing_macros,
+        objc_compat,
+    };
+    ResultIter::from(Lexer::with_extras(src, extras))
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub enum Constant {
     Char(u8),
@@ -94,6 +106,17 @@ const FS: &[char] = &['f', 'F', 'l', 'L'];
 fn fix_literal(lit: &str) -> Cow<str> {
     let lit = lit.strip_prefix('L').unwrap_or(lit);
     let lit = lit.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
+    // TODO remove un-escaped newlines
+    Cow::Borrowed(lit)
+}
+
+fn fix_escaped_literal(lit: &str) -> Cow<str> {
+    let lit = lit.strip_prefix('L').unwrap_or(lit);
+    let lit = lit
+        .strip_prefix("&quot;")
+        .unwrap()
+        .strip_suffix("&quot;")
+        .unwrap();
     // TODO remove un-escaped newlines
     Cow::Borrowed(lit)
 }
@@ -364,6 +387,7 @@ pub enum Token<'a> {
     #[regex(r#"[0-9]+(?&exp)?[fF]"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
     Constant(Constant),
     // &quot;
+    #[regex(r#"L?&quot;([^\\]|\\t|\\u|\\n)*&quot;"#, |lex| fix_escaped_literal(lex.slice()))]
     #[regex(r#"L?"([^"\\]|\\t|\\u|\\n|\\")*""#, |lex| fix_literal(lex.slice()))]
     Literal(Cow<'a, str>),
 }

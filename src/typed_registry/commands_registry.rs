@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt};
+use std::borrow::Cow;
 
 use roxmltree::Node;
 use serde::Serialize;
@@ -32,8 +32,13 @@ pub struct CommandParam<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImplicitExternSyncParam<'a> {
+    pub description: Cow<'a, str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ImplicitExternSyncParams<'a> {
-    pub params: Box<[Cow<'a, str>]>,
+    pub params: Vec<ImplicitExternSyncParam<'a>>,
 }
 
 #[enumflags2::bitflags]
@@ -75,11 +80,15 @@ impl<'a> From<&'a str> for SuccessCodes<'a> {
     }
 }
 
-impl<'a> fmt::Display for SuccessCodes<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'s, 'a: 's> IntoIterator for &'s SuccessCodes<'a> {
+    type Item = &'s Cow<'a, str>;
+
+    type IntoIter = <&'s [Cow<'a, str>] as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
         match self {
-            Self::DefaultSuccess => write!(f, "VK_SUCCESS"),
-            Self::Codes(codes) => crate::fmt_write_interspersed(f, codes.iter(), ","),
+            SuccessCodes::DefaultSuccess => (&[Cow::Borrowed("VK_SUCCESS")]).into_iter(),
+            SuccessCodes::Codes(codes) => codes.into_iter(),
         }
     }
 }
@@ -142,16 +151,23 @@ impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {
     }
 }
 
+impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParam<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if node.has_tag_name("param") {
+            Ok(Some(Self {
+                description: Cow::Borrowed(node.text().unwrap_or("")),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("implicitexternsyncparams") {
             Ok(Some(ImplicitExternSyncParams {
-                params: node
-                    .children()
-                    .filter(|n| n.has_tag_name("param"))
-                    .map(|n| n.text().unwrap_or(""))
-                    .map(Cow::Borrowed)
-                    .collect(),
+                params: Parse::parse(node)?,
             }))
         } else {
             Ok(None)

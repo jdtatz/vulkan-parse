@@ -6,7 +6,9 @@ use ron::{
     ser::{to_writer_pretty, PrettyConfig},
 };
 use roxmltree::Node;
-use vulkan_parse::{into_xml, parse_registry, Document, Expression, Registry, Token, TokenExtras};
+use vulkan_parse::{
+    into_xml::into_xml, parse_registry, Document, Expression, Registry, Token, TokenExtras,
+};
 
 fn write_registry(name: &str, reg: &Registry) {
     let config = PrettyConfig::default().extensions(Extensions::all());

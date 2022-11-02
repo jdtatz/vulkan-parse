@@ -939,7 +939,10 @@ impl<'a> IntoXMLElement for Command<'a> {
             comment,
         } = self;
         element
-            .with_opt_attribute("successcodes", success_codes.as_ref())
+            .with_opt_attribute(
+                "successcodes",
+                success_codes.as_ref().map(Seperated::<_, ','>),
+            )
             .with_opt_attribute("errorcodes", error_codes.as_deref().map(|ec| ec.join(",")))
             .with_opt_attribute("queues", queues.map(Seperated::<_, ','>))
             .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.map(Seperated::<_, ','>))
@@ -982,15 +985,19 @@ impl<'a> IntoXMLElement for CommandParam<'a> {
     const TAG: &'static str = "param";
 }
 
+impl<'a> IntoXMLElement for ImplicitExternSyncParam<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let ImplicitExternSyncParam { description } = self;
+        element.write_escaped_text(description)
+    }
+
+    const TAG: &'static str = "param";
+}
+
 impl<'a> IntoXMLElement for ImplicitExternSyncParams<'a> {
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         let ImplicitExternSyncParams { params } = self;
-        element.write_inner_content_(|writer| {
-            for param in params.iter() {
-                writer.create_element2("param").write_escaped_text(param)?;
-            }
-            Ok(())
-        })
+        element.write_children(params)
     }
 
     const TAG: &'static str = "implicitexternsyncparams";

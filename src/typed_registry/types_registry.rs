@@ -109,22 +109,102 @@ impl fmt::Display for OptionalKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum ExternSyncFieldValue<'a> {
+    ValueField(Cow<'a, str>),
+    ArrayField(Cow<'a, str>),
+}
+
+impl<'a> From<&'a str> for ExternSyncFieldValue<'a> {
+    fn from(s: &'a str) -> Self {
+        if let Some(field) = s.strip_suffix("[]") {
+            Self::ArrayField(Cow::Borrowed(field))
+        } else {
+            Self::ValueField(Cow::Borrowed(s))
+        }
+    }
+}
+
+/// This is likely redundant and may be removed in the future
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum ExternSyncParam<'a> {
+    ValueParam(Cow<'a, str>),
+    ArrayParam(Cow<'a, str>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExternSyncField<'a> {
+    /// This is likely redundant and may be removed in the future
+    pub param: ExternSyncParam<'a>,
+    pub field: ExternSyncFieldValue<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternSyncParseError;
+
+impl fmt::Display for ExternSyncParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Unrecongized `externsync` attribute value, the expected form is `{{param}}(->|[].){{field}}([])?`"
+        )
+    }
+}
+
+impl std::error::Error for ExternSyncParseError {}
+
+impl<'a> TryFrom<&'a str> for ExternSyncField<'a> {
+    type Error = ExternSyncParseError;
+
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        if let Some((param, field)) = value.split_once("[].") {
+            Ok(Self {
+                param: ExternSyncParam::ArrayParam(Cow::Borrowed(param)),
+                field: ExternSyncFieldValue::from(field),
+            })
+        } else if let Some((param, field)) =
+            value.split_once("->").or_else(|| value.split_once("-&gt;"))
+        {
+            Ok(Self {
+                param: ExternSyncParam::ValueParam(Cow::Borrowed(param)),
+                field: ExternSyncFieldValue::from(field),
+            })
+        } else {
+            Err(ExternSyncParseError)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
     Value,
-    Fields(Box<[Cow<'a, str>]>),
+    Fields(Vec<ExternSyncField<'a>>),
 }
 
-impl<'a> From<&'a str> for ExternSyncKind<'a> {
-    fn from(s: &'a str) -> Self {
+impl<'a> TryFrom<&'a str> for ExternSyncKind<'a> {
+    type Error = ExternSyncParseError;
+
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         match s {
-            "true" => Self::Value,
-            // FIXME split into 
-            s => Self::Fields(s.split(',').map(Cow::Borrowed).collect())
-            // #[cfg(debug_assertions)]
-            // s => todo!("Unexpected <[field-like] externsync=...> of {:?}", s),
-            // #[cfg(not(debug_assertions))]
-            // _ => Err(()),
+            "true" => Ok(Self::Value),
+            s => s
+                .split(',')
+                .map(ExternSyncField::try_from)
+                .collect::<Result<_, _>>()
+                .map(Self::Fields),
+        }
+    }
+}
+
+impl<'a> fmt::Display for ExternSyncField<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.param {
+            ExternSyncParam::ValueParam(p) => write!(f, "{}->", p),
+            ExternSyncParam::ArrayParam(p) => write!(f, "{}[].", p),
+        }?;
+        match &self.field {
+            ExternSyncFieldValue::ValueField(v) => write!(f, "{}", v),
+            ExternSyncFieldValue::ArrayField(v) => write!(f, "{}[]", v),
         }
     }
 }

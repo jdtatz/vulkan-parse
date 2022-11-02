@@ -4,7 +4,7 @@ pub use roxmltree::Document;
 use roxmltree::{Node, NodeId};
 use serde::Serialize;
 
-use crate::{Container, LexerError, Registry, Seperated};
+use crate::{Container, LexerError, ParseError, Registry, Seperated};
 
 #[derive(Debug)]
 pub(crate) enum ErrorKind {
@@ -14,7 +14,7 @@ pub(crate) enum ErrorKind {
     MissingAttribute(&'static str, NodeId),
     MissingChildElement(&'static str, NodeId),
     LexerError(LexerError, NodeId),
-    PegParsingError(peg::error::ParseError<usize>, NodeId),
+    PegParsingError(ParseError, NodeId),
     AttributeValueError(&'static str, Box<dyn std::error::Error + 'static>, NodeId),
     TextValueError(Box<dyn std::error::Error + 'static>, NodeId),
 }

@@ -53,7 +53,7 @@ impl<'a> From<&'a str> for ExtensionPromotion<'a> {
 impl<'a> fmt::Display for ExtensionPromotion<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Core(v) => write!(f, "VK_VERSION_{}_{}", v.major, v.minor),
+            Self::Core(v) => write!(f, "{}", v),
             Self::Extension(e) => write!(f, "{}", e),
         }
     }

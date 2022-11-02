@@ -1,14 +1,14 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 
-mod into_xml;
+#[cfg(feature = "roundtrip")]
+pub mod into_xml;
 mod lexer;
 mod parse_xml;
 mod parser;
 mod typed_registry;
 
 pub use crate::{
-    into_xml::into_xml,
     lexer::{Constant, Error as LexerError, Token, TokenExtras},
     parse_xml::*,
     parser::*,
@@ -77,7 +77,7 @@ where
     }
 }
 
-impl<V: Copy + Container, const C: char> std::fmt::Display for Seperated<V, C>
+impl<V: Copy + IntoIterator, const C: char> std::fmt::Display for Seperated<V, C>
 where
     <V as IntoIterator>::Item: std::fmt::Display,
 {
