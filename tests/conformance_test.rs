@@ -1,14 +1,11 @@
 use std::{collections::HashSet, fs, io::Cursor};
 
-use logos::Logos;
 use ron::{
     extensions::Extensions,
     ser::{to_writer_pretty, PrettyConfig},
 };
 use roxmltree::Node;
-use vulkan_parse::{
-    into_xml::into_xml, parse_registry, Document, Expression, Registry, Token, TokenExtras,
-};
+use vulkan_parse::{into_xml::into_xml, parse_registry, tokenize, Document, Expression, Registry};
 
 fn write_registry(name: &str, reg: &Registry) {
     let config = PrettyConfig::default().extensions(Extensions::all());
@@ -56,6 +53,7 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
     let standard_doc = Document::parse(&standard_xml).unwrap();
     let roundtrip_doc = Document::parse(&roundtrip_xml).unwrap();
 
+    // ignore comment nodes and empty text nodes
     let node_filter =
         |n: &Node| !n.is_comment() && (!n.is_text() || n.text().map_or(false, |s| s.trim() != ""));
     let standard_nodes = standard_doc.descendants().filter(node_filter);
@@ -71,11 +69,11 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
             for attr in s.attributes() {
                 let r_attr_val = if let Some(r_attr_val) = r.attribute(attr.name()) {
                     r_attr_val
-                } else if attr.name() == "bitvalues" {
-                    // This replacement should probably be reversed, as the 'bitvalues' implies a stronger relationship then 'requires' which only implies a dependency
+                } else if attr.name() == "requires" {
+                    // 'bitvalues' implies a stronger relationship then 'requires' which only implies a dependency
                     // but in the generator there is nothing diffrent between the 2
                     // see Vulkan-Docs/scripts/reg.py:1251:
-                    r.attribute("requires").unwrap()
+                    r.attribute("bitvalues").unwrap()
                 } else {
                     todo!()
                 };
@@ -85,7 +83,7 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
                         let r_set = r_attr_val.split(',').collect::<HashSet<_>>();
                         assert_eq!(s_set, r_set);
                     } else if let Some(s_ver) = attr.value().strip_prefix("VK_API_VERSION_") {
-                        // # VK_VERSION_* are the gaurd macros and VK_API_VERSION_* are the version number macros
+                        // # VK_VERSION_* are the guard macros and VK_API_VERSION_* are the version number macros
                         // # see Vulkan-Docs/scripts/spirvcapgenerator.py:125:
                         assert_eq!(s_ver, r_attr_val.strip_prefix("VK_VERSION_").unwrap());
                     } else {
@@ -99,25 +97,7 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
             let std_txt = s.text().unwrap();
             let rt_txt = r.text().unwrap();
             if std_txt != rt_txt {
-                let s_tokens = Token::lexer_with_extras(
-                    std_txt,
-                    TokenExtras {
-                        keep_new_lines: false,
-                        objc_compat: true,
-                    },
-                )
-                .into_iter()
-                .collect::<Vec<_>>();
-                let r_tokens = Token::lexer_with_extras(
-                    rt_txt,
-                    TokenExtras {
-                        keep_new_lines: false,
-                        objc_compat: true,
-                    },
-                )
-                .into_iter()
-                .collect::<Vec<_>>();
-                assert_eq!(s_tokens, r_tokens)
+                assert!(tokenize(std_txt, false, true).eq(tokenize(rt_txt, false, true)));
             }
         }
     }

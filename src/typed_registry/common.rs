@@ -73,12 +73,16 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct Alias<'a> {
+    pub name: Cow<'a, str>,
+    pub alias: Cow<'a, str>,
+    pub comment: Option<Cow<'a, str>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum DefinitionOrAlias<'a, T> {
-    Alias {
-        name: Cow<'a, str>,
-        alias: Cow<'a, str>,
-        comment: Option<Cow<'a, str>>,
-    },
+    Alias(Alias<'a>),
     Definition(T),
 }
 
@@ -233,11 +237,11 @@ impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
 impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for DefinitionOrAlias<'a, T> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(alias) = try_attribute(node, "alias")? {
-            Ok(Some(DefinitionOrAlias::Alias {
+            Ok(Some(DefinitionOrAlias::Alias(Alias {
                 name: attribute(node, "name")?,
                 alias,
                 comment: try_attribute(node, "comment")?,
-            }))
+            })))
         } else {
             Ok(T::try_parse(node)?.map(DefinitionOrAlias::Definition))
         }

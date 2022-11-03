@@ -44,11 +44,7 @@ where
     }
 }
 
-pub(crate) fn tokenize(
-    src: &str,
-    parsing_macros: bool,
-    objc_compat: bool,
-) -> ResultIter<'_, Token> {
+pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool) -> ResultIter<'_, Token> {
     let extras = TokenExtras {
         keep_new_lines: parsing_macros,
         objc_compat,
@@ -163,8 +159,6 @@ impl TokenExtras {
 #[logos(subpattern float_suffix = r"[fFlL]")]
 #[logos(subpattern int_suffix = r"[uUlL]*")]
 pub enum Token<'a> {
-    // #[regex(r"//[^\n]*", logos::skip)]
-    // #[regex(r"[ \t\n\f]+", logos::skip)]
     #[error]
     Error,
     #[token("auto")]
@@ -634,15 +628,9 @@ impl<'a> fmt::Display for Token<'a> {
             Token::_DeprecationComment(c) => write!(f, "// DEPRECATED:{c}"),
             Token::Identifier(id) => write!(f, "{id}"),
             Token::Constant(c) => write!(f, "{c}"),
-            Token::Literal(lit) => {
-                let lit: &str = lit;
-                // FIXME
-                write!(f, "{lit:?}")
-            }
-            Token::Error => Ok(()),
-            // Token::Error => unreachable!(),
+            Token::Literal(lit) => write!(f, "\"{lit}\""),
+            Token::Error => unreachable!(),
         }?;
-        // write!(f, " ")
         Ok(())
     }
 }

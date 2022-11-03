@@ -9,7 +9,7 @@ mod parser;
 mod typed_registry;
 
 pub use crate::{
-    lexer::{Constant, Error as LexerError, Token, TokenExtras},
+    lexer::{tokenize, Constant, Error as LexerError, Token, TokenExtras},
     parse_xml::*,
     parser::*,
     typed_registry::*,

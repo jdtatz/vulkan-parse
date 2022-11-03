@@ -162,37 +162,60 @@ trait IntoXML {
 trait IntoXMLElement {
     const TAG: &'static str;
 
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element
+    }
+
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result;
 }
 
 impl<E: IntoXMLElement> IntoXML for E {
     fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
-        self.write_element(writer.create_element2(<Self as IntoXMLElement>::TAG))
+        self.write_element(Self::add_static_attrs(
+            writer.create_element2(<Self as IntoXMLElement>::TAG),
+        ))
     }
 }
 
 impl<'a, E: IntoXMLElement> IntoXMLElement for &'a E {
     const TAG: &'static str = E::TAG;
 
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        E::add_static_attrs(element)
+    }
+
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         (*self).write_element(element)
+    }
+}
+
+impl<'a> IntoXMLElement for Alias<'a> {
+    const TAG: &'static str = "";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Alias {
+            name,
+            alias,
+            comment,
+        } = self;
+        element
+            .with_fmt_attribute("name", name)
+            .with_fmt_attribute("alias", alias)
+            .with_opt_attribute("comment", comment.as_deref())
+            .write_empty_()
     }
 }
 
 impl<'a, T: IntoXMLElement> IntoXMLElement for DefinitionOrAlias<'a, T> {
     const TAG: &'static str = T::TAG;
 
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        T::add_static_attrs(element)
+    }
+
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         match self {
-            DefinitionOrAlias::Alias {
-                name,
-                alias,
-                comment,
-            } => element
-                .with_fmt_attribute("name", name)
-                .with_fmt_attribute("alias", alias)
-                .with_opt_attribute("comment", comment.as_deref())
-                .write_empty_(),
+            DefinitionOrAlias::Alias(alias) => alias.write_element(element),
             DefinitionOrAlias::Definition(defn) => defn.write_element(element),
         }
     }
@@ -420,312 +443,353 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
     }
 }
 
-impl<'a> IntoXMLElement for Type<'a> {
+impl<'a> IntoXML for Type<'a> {
+    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+        match self {
+            Type::Requires(ty) => ty.write_xml(writer),
+            Type::Include(ty) => ty.write_xml(writer),
+            Type::Define(ty) => ty.write_xml(writer),
+            Type::BaseType(ty) => ty.write_xml(writer),
+            Type::Bitmask(ty) => ty.write_xml(writer),
+            Type::Handle(ty) => ty.write_xml(writer),
+            Type::Enum(ty) => ty.write_xml(writer),
+            Type::FnPtr(ty) => ty.write_xml(writer),
+            Type::Struct(ty) => ty.write_xml(writer),
+            Type::Union(ty) => ty.write_xml(writer),
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for RequiresType<'a> {
     const TAG: &'static str = "type";
 
-    fn write_element<'e, W: Write>(&self, mut elem: ElementWriter2<'e, W>) -> Result {
-        match self {
-            Type::Requires(RequiresType { name, requires }) => elem
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self { name, requires } = self;
+        element
+            .with_fmt_attribute("name", name)
+            .with_opt_attribute("requires", requires.as_deref())
+            .write_empty_()
+    }
+}
+
+impl<'a> IntoXMLElement for IncludeType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "include")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name,
+            is_local_include,
+        } = self;
+        let elem = element.with_fmt_attribute("name", name);
+        match is_local_include {
+            Some(true) if name.ends_with(".h") => {
+                elem.write_escaped_text(&format!("#include \"{}\"", name))
+            }
+            Some(true) => elem.write_escaped_text(&format!("#include \"{}.h\"", name)),
+            Some(false) if name.ends_with(".h") => {
+                elem.write_escaped_text(&format!("#include <{}>", name))
+            }
+            Some(false) => elem.write_escaped_text(&format!("#include <{}.h>", name)),
+            None => elem.write_empty_(),
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for DefineType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "define")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name,
+            comment,
+            requires,
+            deprecation_comment,
+            is_disabled,
+            value,
+        } = self;
+        let elem = element
+            .with_opt_attribute("requires", requires.as_deref())
+            .with_opt_attribute("comment", comment.as_deref());
+        let define_macro = if *is_disabled {
+            "//#define "
+        } else {
+            "#define "
+        };
+        let define_macro = if let Some(comment) = deprecation_comment {
+            Cow::Owned(format!("// DEPRECATED:{}\n{}", comment, define_macro))
+        } else {
+            Cow::Borrowed(define_macro)
+        };
+        match value {
+            DefineTypeValue::Expression(expr) => elem.write_inner_content_(|writer| {
+                writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
+                writer.create_element2("name").write_escaped_text(name)?;
+                let value = format!(" {}", expr);
+                writer.write_event(Event::Text(BytesText::new(&value)))
+            }),
+            DefineTypeValue::FunctionDefine { params, expression } => {
+                elem.write_inner_content_(|writer| {
+                    writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
+                    writer.create_element2("name").write_escaped_text(name)?;
+                    let params = params.join(", ");
+                    let value = format!("({}) {}", params, tokens_to_string(expression));
+                    writer.write_event(Event::Text(BytesText::new(&value)))
+                })
+            }
+            DefineTypeValue::MacroFunctionCall {
+                name: fn_name,
+                args,
+            } => elem.write_inner_content_(|writer| {
+                writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
+                writer.create_element2("name").write_escaped_text(name)?;
+                writer.write_event(Event::Text(BytesText::new(" ")))?;
+                writer.create_element2("type").write_escaped_text(fn_name)?;
+                let args = args
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let value = format!("({})", args);
+                writer.write_event(Event::Text(BytesText::new(&value)))
+            }),
+            DefineTypeValue::Code(tokens) => elem
                 .with_fmt_attribute("name", name)
-                .with_opt_attribute("requires", requires.as_deref())
-                .write_empty_(),
-            Type::Include(IncludeType {
-                name,
-                is_local_include,
-            }) => {
-                elem = elem
-                    .with_fmt_attribute("category", "include")
-                    .with_fmt_attribute("name", name);
-                match is_local_include {
-                    Some(true) if name.ends_with(".h") => {
-                        elem.write_escaped_text(&format!("#include \"{}\"", name))
-                    }
-                    Some(true) => elem.write_escaped_text(&format!("#include \"{}.h\"", name)),
-                    Some(false) if name.ends_with(".h") => {
-                        elem.write_escaped_text(&format!("#include <{}>", name))
-                    }
-                    Some(false) => elem.write_escaped_text(&format!("#include <{}.h>", name)),
-                    None => elem.write_empty_(),
-                }
+                .write_escaped_text(&tokens_to_string(tokens)),
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for BaseTypeType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "basetype")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        match self {
+            BaseTypeType::Forward(name) => element.write_inner_content_(|writer| {
+                writer.write_event(Event::Text(BytesText::new("struct ")))?;
+                writer.create_element2("name").write_escaped_text(name)?;
+                writer.write_event(Event::Text(BytesText::new(";")))
+            }),
+            BaseTypeType::TypeDef(field) => element.write_inner_content_(|writer| {
+                writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
+                let FieldLike {
+                    name,
+                    type_name,
+                    is_const,
+                    pointer_kind,
+                    ..
+                } = field;
+                write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
+                writer.write_event(Event::Text(BytesText::new(";")))
+            }),
+            BaseTypeType::DefineGuarded { pre, name, post } => {
+                element.write_inner_content_(|writer| {
+                    writer.write_event(Event::Text(BytesText::new(&tokens_to_string(pre))))?;
+                    writer.create_element2("name").write_escaped_text(name)?;
+                    writer.write_event(Event::Text(BytesText::new(&tokens_to_string(post))))
+                })
             }
-            Type::Define(DefineType {
-                name,
-                comment,
-                requires,
-                is_disabled,
-                value,
-                deprecation_comment,
-            }) => {
-                elem = elem
-                    .with_fmt_attribute("category", "define")
-                    .with_opt_attribute("requires", requires.as_deref())
-                    .with_opt_attribute("comment", comment.as_deref());
-                let define_macro = if *is_disabled {
-                    "//#define "
-                } else {
-                    "#define "
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for BitmaskType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "bitmask")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name,
+            is_64bits,
+            has_bitvalues,
+        } = self;
+        element // TODO requires / bitvalues
+            .with_opt_attribute(
+                "bitvalues",
+                has_bitvalues.then(|| name.replace("Flags", "FlagBits")),
+            )
+            .write_inner_content_(|writer| {
+                writer.write_event(Event::Text(BytesText::new("typedef ")))?;
+                writer
+                    .create_element2("type")
+                    .write_escaped_text(is_64bits.then_some("VkFlags64").unwrap_or("VkFlags"))?;
+                writer.write_event(Event::Text(BytesText::new(" ")))?;
+                writer.create_element2("name").write_escaped_text(name)?;
+                writer.write_event(Event::Text(BytesText::new(";")))
+            })
+    }
+}
+
+impl<'a> IntoXMLElement for HandleType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "handle")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name,
+            handle_kind,
+            obj_type_enum,
+            parent,
+        } = self;
+        element
+            .with_opt_attribute("parent", parent.as_deref())
+            .with_fmt_attribute("objtypeenum", obj_type_enum)
+            .write_inner_content_(|writer| {
+                writer
+                    .create_element2("type")
+                    .write_text_content(BytesText::new(match handle_kind {
+                        HandleKind::Dispatch => "VK_DEFINE_HANDLE",
+                        HandleKind::NoDispatch => "VK_DEFINE_NON_DISPATCHABLE_HANDLE",
+                    }))?;
+                writer.write_event(Event::Text(BytesText::new("(")))?;
+                writer.create_element2("name").write_escaped_text(name)?;
+                writer.write_event(Event::Text(BytesText::new(")")))
+            })
+    }
+}
+
+impl<'a> IntoXMLElement for EnumType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "enum")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self { name } = self;
+        element.with_fmt_attribute("name", name).write_empty_()
+    }
+}
+
+impl<'a> IntoXMLElement for FnPtrType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "funcpointer")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name_and_return,
+            requires,
+            params,
+        } = self;
+        element
+            .with_opt_attribute("requires", requires.as_deref())
+            .write_inner_content_(|writer| {
+                writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
+                writer.write_event(Event::Text(BytesText::new(
+                    &name_and_return.type_name.to_string(),
+                )))?;
+                let post = match name_and_return.pointer_kind {
+                    Some(PointerKind::Single) => "*",
+                    Some(PointerKind::Double {
+                        inner_is_const: true,
+                    }) => "* const*",
+                    Some(PointerKind::Double {
+                        inner_is_const: false,
+                    }) => "**",
+                    None => "",
                 };
-                let define_macro = if let Some(comment) = deprecation_comment {
-                    Cow::Owned(format!("// DEPRECATED:{}\n{}", comment, define_macro))
-                } else {
-                    Cow::Borrowed(define_macro)
-                };
-                match value {
-                    DefineTypeValue::Expression(expr) => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
-                        writer.create_element2("name").write_escaped_text(name)?;
-                        let value = format!(" {}", expr);
-                        writer.write_event(Event::Text(BytesText::new(&value)))
-                    }),
-                    DefineTypeValue::FunctionDefine { params, expression } => elem
-                        .write_inner_content_(|writer| {
-                            writer
-                                .write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
-                            writer.create_element2("name").write_escaped_text(name)?;
-                            let params = params.join(", ");
-                            let value = format!("({}) {}", params, tokens_to_string(expression));
-                            writer.write_event(Event::Text(BytesText::new(&value)))
-                        }),
-                    DefineTypeValue::MacroFunctionCall {
-                        name: fn_name,
-                        args,
-                    } => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
-                        writer.create_element2("name").write_escaped_text(name)?;
-                        writer.write_event(Event::Text(BytesText::new(" ")))?;
-                        writer.create_element2("type").write_escaped_text(fn_name)?;
-                        let args = args
-                            .iter()
-                            .map(|e| e.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        let value = format!("({})", args);
-                        writer.write_event(Event::Text(BytesText::new(&value)))
-                    }),
-                    DefineTypeValue::Code(tokens) => elem
-                        .with_fmt_attribute("name", name)
-                        .write_escaped_text(&tokens_to_string(tokens)),
-                }
-            }
-            Type::BaseType(base) => {
-                elem = elem.with_fmt_attribute("category", "basetype");
-                match base {
-                    BaseTypeType::Forward(name) => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::new("struct ")))?;
-                        writer.create_element2("name").write_escaped_text(name)?;
-                        writer.write_event(Event::Text(BytesText::new(";")))
-                    }),
-                    BaseTypeType::TypeDef(field) => elem.write_inner_content_(|writer| {
-                        writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
+                writer.write_event(Event::Text(BytesText::new(post)))?;
+                writer.write_event(Event::Text(BytesText::new(" (VKAPI_PTR *")))?;
+                writer
+                    .create_element2("name")
+                    .write_escaped_text(&name_and_return.name)?;
+                writer.write_event(Event::Text(BytesText::new(")(")))?;
+                if let Some(params) = params {
+                    let mut is_first = true;
+                    for param in params {
+                        if is_first {
+                            is_first = false;
+                            writer.write_event(Event::Text(BytesText::new("\n     ")))?;
+                        } else {
+                            writer.write_event(Event::Text(BytesText::new(",\n     ")))?;
+                        }
                         let FieldLike {
                             name,
                             type_name,
                             is_const,
                             pointer_kind,
                             ..
-                        } = field;
-                        write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
-                        writer.write_event(Event::Text(BytesText::new(";")))
-                    }),
-                    BaseTypeType::DefineGuarded { pre, name, post } => {
-                        elem.write_inner_content_(|writer| {
-                            writer
-                                .write_event(Event::Text(BytesText::new(&tokens_to_string(pre))))?;
-                            writer.create_element2("name").write_escaped_text(name)?;
-                            writer.write_event(Event::Text(BytesText::new(&tokens_to_string(post))))
-                        })
+                        } = param;
+                        write_typed_tag(name, type_name, *is_const, pointer_kind, false, writer)?;
                     }
+                    writer.write_event(Event::Text(BytesText::new(");")))
+                } else {
+                    writer.write_event(Event::Text(BytesText::new("void);")))
                 }
-            }
-            Type::Bitmask(defn) => {
-                elem = elem.with_fmt_attribute("category", "bitmask");
-                match defn {
-                    DefinitionOrAlias::Alias {
-                        name,
-                        alias,
-                        comment,
-                    } => elem
-                        .with_fmt_attribute("name", name)
-                        .with_fmt_attribute("alias", alias)
-                        .with_opt_attribute("comment", comment.as_deref())
-                        .write_empty_(),
-                    DefinitionOrAlias::Definition(BitmaskType {
-                        name,
-                        is_64bits,
-                        has_bitvalues,
-                    }) => elem
-                        // TODO requires / bitvalues
-                        .with_opt_attribute(
-                            "requires",
-                            has_bitvalues.then(|| name.replace("Flags", "FlagBits")),
-                        )
-                        .write_inner_content_(|writer| {
-                            writer.write_event(Event::Text(BytesText::new("typedef ")))?;
-                            writer.create_element2("type").write_escaped_text(
-                                is_64bits.then_some("VkFlags64").unwrap_or("VkFlags"),
-                            )?;
-                            writer.write_event(Event::Text(BytesText::new(" ")))?;
-                            writer.create_element2("name").write_escaped_text(name)?;
-                            writer.write_event(Event::Text(BytesText::new(";")))
-                        }),
-                }
-            }
-            Type::Handle(defn) => {
-                elem = elem.with_fmt_attribute("category", "handle");
-                match defn {
-                    DefinitionOrAlias::Alias {
-                        name,
-                        alias,
-                        comment,
-                    } => elem
-                        .with_fmt_attribute("name", name)
-                        .with_fmt_attribute("alias", alias)
-                        .with_opt_attribute("comment", comment.as_deref())
-                        .write_empty_(),
-                    DefinitionOrAlias::Definition(HandleType {
-                        name,
-                        handle_kind,
-                        obj_type_enum,
-                        parent,
-                    }) => elem
-                        .with_opt_attribute("parent", parent.as_deref())
-                        .with_fmt_attribute("objtypeenum", obj_type_enum)
-                        .write_inner_content_(|writer| {
-                            writer
-                                .create_element2("type")
-                                .write_text_content(BytesText::new(match handle_kind {
-                                    HandleKind::Dispatch => "VK_DEFINE_HANDLE",
-                                    HandleKind::NoDispatch => "VK_DEFINE_NON_DISPATCHABLE_HANDLE",
-                                }))?;
-                            writer.write_event(Event::Text(BytesText::new("(")))?;
-                            writer.create_element2("name").write_escaped_text(name)?;
-                            writer.write_event(Event::Text(BytesText::new(")")))
-                        }),
-                }
-            }
-            Type::Enum(defn) => {
-                elem = elem.with_fmt_attribute("category", "enum");
-                match defn {
-                    DefinitionOrAlias::Alias {
-                        name,
-                        alias,
-                        comment,
-                    } => elem
-                        .with_fmt_attribute("name", name)
-                        .with_fmt_attribute("alias", alias)
-                        .with_opt_attribute("comment", comment.as_deref())
-                        .write_empty_(),
-                    DefinitionOrAlias::Definition(EnumType { name }) => {
-                        elem.with_fmt_attribute("name", name).write_empty_()
-                    }
-                }
-            }
-            Type::FnPtr(FnPtrType {
-                name_and_return,
-                requires,
-                params,
-            }) => elem
-                .with_fmt_attribute("category", "funcpointer")
-                .with_opt_attribute("requires", requires.as_deref())
-                .write_inner_content_(|writer| {
-                    writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
-                    writer.write_event(Event::Text(BytesText::new(
-                        &name_and_return.type_name.to_string(),
-                    )))?;
-                    let post = match name_and_return.pointer_kind {
-                        Some(PointerKind::Single) => "*",
-                        Some(PointerKind::Double {
-                            inner_is_const: true,
-                        }) => "* const*",
-                        Some(PointerKind::Double {
-                            inner_is_const: false,
-                        }) => "**",
-                        None => "",
-                    };
-                    writer.write_event(Event::Text(BytesText::new(post)))?;
-                    writer.write_event(Event::Text(BytesText::new(" (VKAPI_PTR *")))?;
-                    writer
-                        .create_element2("name")
-                        .write_escaped_text(&name_and_return.name)?;
-                    writer.write_event(Event::Text(BytesText::new(")(")))?;
-                    if let Some(params) = params {
-                        let mut is_first = true;
-                        for param in params {
-                            if is_first {
-                                is_first = false;
-                                writer.write_event(Event::Text(BytesText::new("\n     ")))?;
-                            } else {
-                                writer.write_event(Event::Text(BytesText::new(",\n     ")))?;
-                            }
-                            let FieldLike {
-                                name,
-                                type_name,
-                                is_const,
-                                pointer_kind,
-                                ..
-                            } = param;
-                            write_typed_tag(
-                                name,
-                                type_name,
-                                *is_const,
-                                pointer_kind,
-                                false,
-                                writer,
-                            )?;
-                        }
-                        writer.write_event(Event::Text(BytesText::new(");")))
-                    } else {
-                        writer.write_event(Event::Text(BytesText::new("void);")))
-                    }
-                }),
-            Type::Struct(defn) => {
-                elem = elem.with_fmt_attribute("category", "struct");
-                match defn {
-                    DefinitionOrAlias::Alias {
-                        name,
-                        alias,
-                        comment,
-                    } => elem
-                        .with_fmt_attribute("name", name)
-                        .with_fmt_attribute("alias", alias)
-                        .with_opt_attribute("comment", comment.as_deref())
-                        .write_empty_(),
-                    DefinitionOrAlias::Definition(StructType {
-                        name,
-                        members,
-                        returned_only,
-                        struct_extends,
-                        allow_duplicate,
-                        requires,
-                        comment,
-                    }) => elem
-                        .with_fmt_attribute("name", name)
-                        .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
-                        .with_opt_attribute(
-                            "structextends",
-                            struct_extends.as_deref().map(|se| se.join(",")),
-                        )
-                        .with_opt_attribute(
-                            "allowduplicate",
-                            allow_duplicate.map(|b| b.to_string()),
-                        )
-                        .with_opt_attribute("requires", requires.as_deref())
-                        .with_opt_attribute("comment", comment.as_deref())
-                        .write_children(members),
-                }
-            }
-            Type::Union(UnionType {
-                name,
-                members,
-                returned_only,
-                comment,
-            }) => elem
-                .with_fmt_attribute("category", "union")
-                .with_fmt_attribute("name", name)
-                .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
-                .with_opt_attribute("comment", comment.as_deref())
-                .write_children(members),
-        }
+            })
+    }
+}
+
+impl<'a> IntoXMLElement for StructType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "struct")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name,
+            members,
+            returned_only,
+            struct_extends,
+            allow_duplicate,
+            requires,
+            comment,
+        } = self;
+        element
+            .with_fmt_attribute("name", name)
+            .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
+            .with_opt_attribute(
+                "structextends",
+                struct_extends.as_deref().map(|se| se.join(",")),
+            )
+            .with_opt_attribute("allowduplicate", allow_duplicate.map(|b| b.to_string()))
+            .with_opt_attribute("requires", requires.as_deref())
+            .with_opt_attribute("comment", comment.as_deref())
+            .write_children(members)
+    }
+}
+
+impl<'a> IntoXMLElement for UnionType<'a> {
+    const TAG: &'static str = "type";
+
+    fn add_static_attrs<'e, W: Write>(element: ElementWriter2<'e, W>) -> ElementWriter2<'e, W> {
+        element.with_fmt_attribute("category", "union")
+    }
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Self {
+            name,
+            members,
+            returned_only,
+            comment,
+        } = self;
+        element
+            .with_fmt_attribute("name", name)
+            .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
+            .with_opt_attribute("comment", comment.as_deref())
+            .write_children(members)
     }
 }
 
