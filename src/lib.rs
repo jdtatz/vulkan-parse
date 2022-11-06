@@ -1,6 +1,14 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::missing_errors_doc, clippy::too_many_lines)]
 
+#[cfg(feature = "serialize")]
+#[macro_use]
+extern crate serde;
+
+#[cfg(feature = "serialize")]
+#[macro_use]
+extern crate serde_with;
+
 #[cfg(feature = "roundtrip")]
 pub mod into_xml;
 mod lexer;

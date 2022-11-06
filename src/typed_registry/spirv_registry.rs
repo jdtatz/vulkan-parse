@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct SpirvExtension<'a> {
     pub name: Cow<'a, str>,
     // TODO, usually the only diffrence between `name` & `enable_extension` is the prefix ("SPV_" vs "VK_"), but not always
@@ -18,14 +18,14 @@ pub struct SpirvExtension<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct SpirvCapability<'a> {
     pub name: Cow<'a, str>,
     pub enables: Vec<EnableSpirvCapability<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum EnableSpirvCapability<'a> {
     Version(VersionEnable),
     Extension(ExtensionEnable<'a>),
@@ -34,7 +34,7 @@ pub enum EnableSpirvCapability<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum EnableRequires<'a> {
     Core(StdVersion),
     Extension(Cow<'a, str>),
@@ -65,15 +65,15 @@ impl<'a> fmt::Display for EnableRequires<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct VersionEnable(pub StdVersion);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct ExtensionEnable<'a>(pub Cow<'a, str>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructEnable<'a> {
     pub name: Cow<'a, str>,
     pub feature: Cow<'a, str>,
@@ -82,7 +82,7 @@ pub struct StructEnable<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct PropertyEnable<'a> {
     pub name: Cow<'a, str>,
     pub member: Cow<'a, str>,

@@ -9,14 +9,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum FeatureApi {
     #[strum(serialize = "vulkan")]
     Vulkan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Feature<'a> {
     pub name: Cow<'a, str>,
     pub api: FeatureApi,
@@ -26,7 +26,7 @@ pub struct Feature<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Require<'a> {
     pub comment: Option<Cow<'a, str>>,
     pub feature: Option<StdVersion>,
@@ -35,7 +35,7 @@ pub struct Require<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum RequireValue<'a> {
     Type {
         name: Cow<'a, str>,
@@ -49,7 +49,7 @@ pub enum RequireValue<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct RequireEnum<'a> {
     pub name: Option<Cow<'a, str>>,
     pub extends: Option<Cow<'a, str>>,
@@ -59,14 +59,14 @@ pub struct RequireEnum<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum OffsetDirection {
     #[strum(serialize = "-")]
     Negative,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum RequireValueEnum<'a> {
     Value(Expression<'a>),
     Alias(Cow<'a, str>),

@@ -15,11 +15,11 @@ use super::{
 use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum Items<'a> {
     Platforms {
         platforms: Vec<Platform<'a>>,
@@ -55,7 +55,7 @@ pub enum Items<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Platform<'a> {
     pub name: Cow<'a, str>,
     pub protect: Cow<'a, str>,
@@ -63,7 +63,7 @@ pub struct Platform<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Tag<'a> {
     pub name: Cow<'a, str>,
     pub author: Cow<'a, str>,
@@ -71,7 +71,7 @@ pub struct Tag<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum WrappedExtension<'a> {
     Extension(Extension<'a>),
     PseudoExtension(PseudoExtension<'a>),

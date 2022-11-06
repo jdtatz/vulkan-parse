@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Enums<'a> {
     pub name: Cow<'a, str>,
     pub bit_width: Option<NonZeroU8>,
@@ -21,7 +21,7 @@ pub struct Enums<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum EnumsValues<'a> {
     /// no type attribute
     Constants(CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>),
@@ -35,7 +35,7 @@ pub enum EnumsValues<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct ConstantEnum<'a> {
     pub name: Cow<'a, str>,
     pub type_name: Cow<'a, str>,
@@ -44,7 +44,7 @@ pub struct ConstantEnum<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct ValueEnum<'a> {
     pub name: Cow<'a, str>,
     pub value: i64,
@@ -52,7 +52,7 @@ pub struct ValueEnum<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct BitPosEnum<'a> {
     pub name: Cow<'a, str>,
     pub bitpos: u8,
@@ -60,7 +60,7 @@ pub struct BitPosEnum<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum BitmaskEnum<'a> {
     Value(ValueEnum<'a>),
     BitPos(BitPosEnum<'a>),
@@ -85,7 +85,7 @@ impl<'a> BitmaskEnum<'a> {
 
 /// <enums type="enum"> ... <unused /> </<enums>
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct UnusedEnum<'a> {
     pub start: i64,
     pub comment: Option<Cow<'a, str>>,

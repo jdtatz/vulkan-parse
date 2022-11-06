@@ -11,11 +11,11 @@ use roxmltree::Node;
 use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Comment<'a>(pub Cow<'a, str>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum MaybeComment<'a, T> {
     Value(T),
     Comment(Comment<'a>),
@@ -38,7 +38,7 @@ impl<'a, T> MaybeComment<'a, T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct CommentendChildren<'a, T>(pub Vec<MaybeComment<'a, T>>);
 
 impl<'a, T: 'a> CommentendChildren<'a, T> {
@@ -72,7 +72,7 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Alias<'a> {
     pub name: Cow<'a, str>,
     pub alias: Cow<'a, str>,
@@ -80,14 +80,14 @@ pub struct Alias<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DefinitionOrAlias<'a, T> {
     Alias(Alias<'a>),
     Definition(T),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct SemVarVersion {
     pub major: u32,
     pub minor: u32,
@@ -133,7 +133,7 @@ impl fmt::Display for SemVarVersion {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct StdVersion {
     pub major: u32,
     pub minor: u32,

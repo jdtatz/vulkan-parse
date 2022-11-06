@@ -9,7 +9,7 @@ use super::{
 use crate::{attribute, try_attribute, try_attribute_fs, try_attribute_sep, Parse, ParseResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExtensionKind {
     #[strum(serialize = "instance")]
     Instance,
@@ -19,7 +19,7 @@ pub enum ExtensionKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExtensionSupport {
     #[strum(serialize = "vulkan")]
     Vulkan,
@@ -30,14 +30,14 @@ pub enum ExtensionSupport {
 // FIXME Unsure of the sortorder attribute's purpose,
 //  may be better to be an Option<NonZeroU8> if it's a versioning attr
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum SortOrder {
     #[strum(serialize = "1")]
     One,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExtensionPromotion<'a> {
     Core(StdVersion),
     Extension(Cow<'a, str>),
@@ -63,7 +63,7 @@ impl<'a> fmt::Display for ExtensionPromotion<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Extension<'a> {
     pub name: Cow<'a, str>,
     pub number: u32,
@@ -88,7 +88,7 @@ pub struct Extension<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct PseudoExtension<'a> {
     pub name: Cow<'a, str>,
     pub supported: ExtensionSupport,

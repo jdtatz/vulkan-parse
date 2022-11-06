@@ -1,20 +1,10 @@
 use std::{collections::HashSet, fs, io::Cursor};
 
-use ron::{
-    extensions::Extensions,
-    ser::{to_writer_pretty, PrettyConfig},
-};
 use roxmltree::Node;
-use vulkan_parse::{into_xml::into_xml, parse_registry, tokenize, Document, Expression, Registry};
-
-fn write_registry(name: &str, reg: &Registry) {
-    let config = PrettyConfig::default().extensions(Extensions::all());
-    let f = fs::File::create(format!("{}.ron", name)).unwrap();
-    to_writer_pretty(f, reg, config).unwrap();
-}
+use vulkan_parse::{into_xml::into_xml, parse_registry, tokenize, Document, Expression};
 
 #[test]
-fn parse_vk_xml() {
+fn test_vk_xml_conformance() {
     let xml = fs::read_to_string("Vulkan-Docs/xml/vk.xml").unwrap();
     let doc = Document::parse(&xml).unwrap();
     let registry = match parse_registry(&doc) {
@@ -25,13 +15,11 @@ fn parse_vk_xml() {
     into_xml(&registry, Cursor::new(&mut roundtrip_xml)).unwrap();
     fs::write("vk.roundtrip.xml", &roundtrip_xml).unwrap();
     let roundtrip_xml = String::from_utf8(roundtrip_xml).unwrap();
-    // commented out for now b/c it takes 20 seconds
-    // write_registry("vk", &registry);
     xml_compare(&xml, &roundtrip_xml);
 }
 
 #[test]
-fn parse_video_xml() {
+fn test_video_xml_conformance() {
     let xml = fs::read_to_string("Vulkan-Docs/xml/video.xml").unwrap();
     let doc = Document::parse(&xml).unwrap();
     let registry = match parse_registry(&doc) {
@@ -43,7 +31,6 @@ fn parse_video_xml() {
     fs::write("video.roundtrip.xml", &roundtrip_xml).unwrap();
     let roundtrip_xml = String::from_utf8(roundtrip_xml).unwrap();
     xml_compare(&xml, &roundtrip_xml);
-    write_registry("video", &registry);
 }
 
 const UNORDERED_ATTRS: &[&str] = &["queues", "cmdbufferlevel", "tasks"];

@@ -5,7 +5,7 @@ use roxmltree::Node;
 use crate::{attribute, attribute_fs, try_attribute, try_attribute_fs, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 
 pub struct Format<'a> {
     pub name: Cow<'a, str>,
@@ -20,7 +20,7 @@ pub struct Format<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 
 pub enum FormatChild<'a> {
     Component {
@@ -43,7 +43,7 @@ pub enum FormatChild<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct BlockExtent(pub NonZeroU8, pub NonZeroU8, pub NonZeroU8);
 
 impl FromStr for BlockExtent {
@@ -67,7 +67,7 @@ impl fmt::Display for BlockExtent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum FormatChroma {
     #[strum(serialize = "420")]
@@ -79,7 +79,7 @@ pub enum FormatChroma {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum FormatCompressionType {
     #[strum(serialize = "BC")]
@@ -100,7 +100,7 @@ pub enum FormatCompressionType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComponentBits {
     Compressed,
@@ -129,7 +129,7 @@ impl fmt::Display for ComponentBits {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComponentNumericFormat {
     SRGB,
@@ -144,7 +144,7 @@ pub enum ComponentNumericFormat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComponentName {
     A,
