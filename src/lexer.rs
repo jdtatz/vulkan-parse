@@ -44,6 +44,7 @@ where
     }
 }
 
+#[must_use]
 pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool) -> ResultIter<'_, Token> {
     let extras = TokenExtras {
         keep_new_lines: parsing_macros,

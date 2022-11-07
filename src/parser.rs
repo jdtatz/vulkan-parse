@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     lexer::tokenize, ArrayLength, BaseTypeType, Constant, DefineType, DefineTypeValue, ErrorKind,
-    FieldLike, FnPtrType, ParseResult, PointerKind, Token,
+    FieldLike, FieldLikeSizing, FnPtrType, ParseResult, PointerKind, Token,
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -226,98 +226,59 @@ fn wrap_fn_call<'a>(f: Expression<'a>, args: Vec<Expression<'a>>) -> Expression<
 //     Expression::Comma(Box::new(head), Box::new(tail))
 // }
 
-impl fmt::Display for TypeSpecifier<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'a> Into<Token<'static>> for UnaryOp<'a> {
+    fn into(self) -> Token<'static> {
         match self {
-            TypeSpecifier::Void => write!(f, "void"),
-            TypeSpecifier::Char => write!(f, "char"),
-            TypeSpecifier::Short => write!(f, "short"),
-            TypeSpecifier::Int => write!(f, "int"),
-            TypeSpecifier::Long => write!(f, "long"),
-            TypeSpecifier::Float => write!(f, "float"),
-            TypeSpecifier::Double => write!(f, "double"),
-            TypeSpecifier::Struct(ident) => write!(f, "struct {ident}"),
-            TypeSpecifier::Union(ident) => write!(f, "union {ident}"),
-            TypeSpecifier::Enum(ident) => write!(f, "enum {ident}"),
-            TypeSpecifier::TypedefName(ident) => write!(f, "{ident}"),
+            UnaryOp::Address => Token::Ampersand,
+            UnaryOp::Indirection => Token::MulStar,
+            UnaryOp::Positive => Token::Plus,
+            UnaryOp::Negative => Token::Minus,
+            UnaryOp::BitwiseNegation => Token::Tilde,
+            UnaryOp::LogicalNegation => Token::Exclamation,
+            UnaryOp::Increment(_) => Token::Increment,
+            UnaryOp::Decrement(_) => Token::Decrement,
+            UnaryOp::Cast(_) => todo!(),
         }
     }
 }
 
-impl fmt::Display for TypeName<'_> {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
-impl fmt::Display for UnaryOp<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Into<Token<'static>> for BinaryOp {
+    fn into(self) -> Token<'static> {
         match self {
-            UnaryOp::Address => write!(f, "&"),
-            UnaryOp::Indirection => write!(f, "*"),
-            UnaryOp::Positive => write!(f, "+"),
-            UnaryOp::Negative => write!(f, "-"),
-            UnaryOp::BitwiseNegation => write!(f, "~"),
-            UnaryOp::LogicalNegation => write!(f, "!"),
-            UnaryOp::Increment(_) => write!(f, "++"),
-            UnaryOp::Decrement(_) => write!(f, "--"),
-            UnaryOp::Cast(ty) => write!(f, "({ty})"),
+            BinaryOp::Addition => Token::Plus,
+            BinaryOp::Subtraction => Token::Minus,
+            BinaryOp::Multiplication => Token::MulStar,
+            BinaryOp::Division => Token::Slash,
+            BinaryOp::Remainder => Token::Percent,
+            BinaryOp::LeftShift => Token::LShift,
+            BinaryOp::RightShift => Token::RShift,
+            BinaryOp::BitwiseAnd => Token::Ampersand,
+            BinaryOp::BitwiseOr => Token::VerticalBar,
+            BinaryOp::BitwiseXor => Token::Caret,
+            BinaryOp::LogicalAnd => Token::And,
+            BinaryOp::LogicalOr => Token::Or,
         }
     }
 }
 
-impl fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Into<Token<'static>> for ComparisionOp {
+    fn into(self) -> Token<'static> {
         match self {
-            BinaryOp::Addition => write!(f, "+"),
-            BinaryOp::Subtraction => write!(f, "-"),
-            BinaryOp::Multiplication => write!(f, "*"),
-            BinaryOp::Division => write!(f, "/"),
-            BinaryOp::Remainder => write!(f, "%"),
-            BinaryOp::LeftShift => write!(f, "<<"),
-            BinaryOp::RightShift => write!(f, ">>"),
-            BinaryOp::BitwiseAnd => write!(f, "&"),
-            BinaryOp::BitwiseOr => write!(f, "|"),
-            BinaryOp::BitwiseXor => write!(f, "^"),
-            BinaryOp::LogicalAnd => write!(f, "&&"),
-            BinaryOp::LogicalOr => write!(f, "||"),
+            ComparisionOp::LT => Token::LessThan,
+            ComparisionOp::LTE => Token::LessThanEqual,
+            ComparisionOp::Eq => Token::Equal,
+            ComparisionOp::NEq => Token::NotEqual,
+            ComparisionOp::GTE => Token::GreaterThanEqual,
+            ComparisionOp::GT => Token::GreaterThan,
         }
     }
 }
 
-impl fmt::Display for ComparisionOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Into<Token<'static>> for MemberAccess {
+    fn into(self) -> Token<'static> {
         match self {
-            ComparisionOp::LT => write!(f, "<"),
-            ComparisionOp::LTE => write!(f, "<="),
-            ComparisionOp::Eq => write!(f, "=="),
-            ComparisionOp::NEq => write!(f, "!="),
-            ComparisionOp::GTE => write!(f, ">="),
-            ComparisionOp::GT => write!(f, ">"),
-        }
-    }
-}
-
-impl fmt::Display for MemberAccess {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MemberAccess::Direct => write!(f, "."),
-            MemberAccess::Pointer => write!(f, "->"),
-        }
-    }
-}
-
-struct MaybeParenWrap<'b, 'a>(&'b Expression<'a>);
-
-impl fmt::Display for MaybeParenWrap<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if matches!(
-            self.0,
-            Expression::Identifier(_) | Expression::Constant(_) | Expression::Literal(_)
-        ) {
-            write!(f, "{}", self.0)
-        } else {
-            write!(f, "({})", self.0)
+            MemberAccess::Direct => Token::Dot,
+            MemberAccess::Pointer => Token::Point,
         }
     }
 }
@@ -325,38 +286,101 @@ impl fmt::Display for MaybeParenWrap<'_, '_> {
 // Only used for roundtrip
 impl fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut tokens = Vec::new();
+        self.to_tokens(&mut tokens, false);
+        for token in tokens {
+            write!(f, "{token}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Expression<'a> {
+    pub fn to_tokens<'s>(&'s self, tokens: &mut Vec<Token<'s>>, is_inner: bool) {
         match self {
-            Expression::Identifier(id) => write!(f, "{id}"),
-            Expression::Constant(c) => write!(f, "{c}"),
-            Expression::Literal(lit) => write!(f, "{lit:?}"),
+            Expression::Identifier(id) => tokens.push(Token::Identifier(id.as_ref())),
+            Expression::Constant(c) => tokens.push(Token::Constant(*c)),
+            Expression::Literal(lit) => tokens.push(Token::Literal(Cow::Borrowed(lit))),
             Expression::SizeOf(_) => todo!(),
             Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
-                write!(f, "{}++", MaybeParenWrap(e))
+                e.to_tokens(tokens, is_inner);
+                tokens.push(Token::Increment);
             }
             Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => {
-                write!(f, "{}--", MaybeParenWrap(e))
+                e.to_tokens(tokens, is_inner);
+                tokens.push(Token::Decrement);
             }
-            Expression::Unary(op, e) => write!(f, "{op}{}", MaybeParenWrap(e)),
+            Expression::Unary(UnaryOp::Cast(ty), e) => todo!("({:?}){:?}", ty, e),
+            Expression::Unary(op, e) => {
+                tokens.push(op.clone().into());
+                e.to_tokens(tokens, is_inner);
+            }
             Expression::Binary(op, l, r) => {
-                write!(f, "{} {op} {}", MaybeParenWrap(l), MaybeParenWrap(r))
+                if is_inner {
+                    tokens.push(Token::LParen);
+                }
+                l.to_tokens(tokens, true);
+                tokens.push(op.clone().into());
+                r.to_tokens(tokens, true);
+                if is_inner {
+                    tokens.push(Token::RParen);
+                }
             }
             Expression::Comparision(op, l, r) => {
-                write!(f, "{} {op} {}", MaybeParenWrap(l), MaybeParenWrap(r))
+                if is_inner {
+                    tokens.push(Token::LParen);
+                }
+                l.to_tokens(tokens, true);
+                tokens.push(op.clone().into());
+                r.to_tokens(tokens, true);
+                if is_inner {
+                    tokens.push(Token::RParen);
+                }
             }
             Expression::Assignment(_, _, _) => todo!(),
-            Expression::TernaryIfElse(cond, et, ef) => write!(f, "{cond} ? {et} : {ef}"),
-            Expression::FunctionCall(func, args) => {
-                write!(f, "{func}(")?;
-                for arg in args.iter() {
-                    write!(f, "{arg}, ")?;
+            Expression::TernaryIfElse(cond, et, ef) => {
+                if is_inner {
+                    tokens.push(Token::LParen);
                 }
-                write!(f, ")")
+                cond.to_tokens(tokens, true);
+                tokens.push(Token::Question);
+                et.to_tokens(tokens, true);
+                tokens.push(Token::Colon);
+                ef.to_tokens(tokens, true);
+                if is_inner {
+                    tokens.push(Token::RParen);
+                }
+            }
+            Expression::FunctionCall(func, args) => {
+                func.to_tokens(tokens, true);
+                tokens.push(Token::LParen);
+                let mut is_first = true;
+                for arg in args.iter() {
+                    if is_first {
+                        is_first = false;
+                    } else {
+                        tokens.push(Token::Comma);
+                    }
+                    arg.to_tokens(tokens, false);
+                }
+                tokens.push(Token::RParen);
             }
             Expression::Comma(head, tail) => {
-                write!(f, "{} , {}", MaybeParenWrap(head), MaybeParenWrap(tail))
+                head.to_tokens(tokens, true);
+                tokens.push(Token::Comma);
+                tail.to_tokens(tokens, true);
             }
-            Expression::Member(access, v, member) => write!(f, "{v}{access}{member}"),
-            Expression::ArrayElement(e, i) => write!(f, "{e}[{i}]"),
+            Expression::Member(access, v, member) => {
+                v.to_tokens(tokens, true);
+                tokens.push(access.clone().into());
+                tokens.push(Token::Identifier(member.as_ref()));
+            }
+            Expression::ArrayElement(e, i) => {
+                e.to_tokens(tokens, true);
+                tokens.push(Token::LBrack);
+                i.to_tokens(tokens, true);
+                tokens.push(Token::RBrack);
+            }
         }
     }
 }
@@ -368,15 +392,6 @@ pub enum VkXMLToken<'a> {
         name: Cow<'a, str>,
         text: Cow<'a, str>,
     },
-}
-
-impl<'a> fmt::Display for VkXMLToken<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            VkXMLToken::C(token) => write!(f, "{token}"),
-            VkXMLToken::TextTag { name, text } => write!(f, "<{name}>{text}</{name}>"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -402,7 +417,7 @@ impl<'s, 'a: 's> FromIterator<Token<'a>> for VkXMLTokens<'s, 'a> {
     }
 }
 
-pub(crate) fn vk_tokenize<'s, 'a: 's, 'input>(
+fn vk_tokenize<'s, 'a: 's, 'input>(
     node: roxmltree::Node<'a, 'input>,
     parsing_macros: bool,
     objc_compat: bool,
@@ -448,6 +463,17 @@ impl<'s, 'a> peg::Parse for VkXMLTokens<'s, 'a> {
 pub type ParseError =
     peg::error::ParseError<<VkXMLTokens<'static, 'static> as peg::Parse>::PositionRepr>;
 
+pub trait TryFromTokens<'s, 'a: 's>: 's + Sized {
+    const PARSING_MACROS: bool;
+    const OBJC_COMPAT: bool;
+
+    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError>;
+    fn try_from_node(node: roxmltree::Node<'a, 's>) -> Result<Self, crate::ErrorKind> {
+        let tokens = vk_tokenize(node, Self::PARSING_MACROS, Self::OBJC_COMPAT)?;
+        Self::try_from_tokens(&tokens).map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
+    }
+}
+
 impl<'input: 's, 's, 'a> peg::ParseElem<'input> for VkXMLTokens<'s, 'a> {
     type Element = &'s VkXMLToken<'a>;
 
@@ -483,12 +509,6 @@ impl<'input, 's, 'a: 'input> peg::ParseSlice<'input> for VkXMLTokens<'s, 'a> {
     fn parse_slice(&'input self, p1: usize, p2: usize) -> Self::Slice {
         &self[p1..p2]
     }
-}
-
-#[derive(Debug)]
-enum BitFieldSizeOrArrayshape<'a> {
-    BitfieldSize(NonZeroU8),
-    ArrayShape(Vec<ArrayLength<'a>>),
 }
 
 /// C is not a context-free languge and requires building a symbol table of typedefs at parse time to resolve ambigutites with cast expressions
@@ -641,21 +661,15 @@ peg::parser! {
 
         /// parses the content of <member> ... </member> or <proto> ... </proto> or <param> ... </param>
         pub rule field_like() -> FieldLike<'a>
-            = typed:typed_tag(<name_tag()>) bitOrArr:(
-                ":" bitfield_size:(v:integer() { NonZeroU8::new(v.try_into().unwrap()).unwrap() }) { BitFieldSizeOrArrayshape::BitfieldSize(bitfield_size) }
+            = typed:typed_tag(<name_tag()>) sizing:(
+                ":" bitfield_size:(v:integer() { NonZeroU8::new(v.try_into().unwrap()).unwrap() }) { FieldLikeSizing::BitfieldSize(bitfield_size) }
                 / array_shape:("[" n:(
                     v:integer() { ArrayLength::Static(NonZeroU32::new(v.try_into().unwrap()).unwrap()) }
                     / name:enum_tag() { ArrayLength::Constant(name) }
-                ) "]" { n })+ { BitFieldSizeOrArrayshape::ArrayShape(array_shape) }
+                ) "]" { n })+ { FieldLikeSizing::ArrayShape(array_shape) }
             )? comment:comment_tag()? {
-                let (bitfield_size, array_shape) = match bitOrArr {
-                    Some(BitFieldSizeOrArrayshape::BitfieldSize(size)) => (Some(size), None),
-                    Some(BitFieldSizeOrArrayshape::ArrayShape(shape)) => (None, Some(shape)),
-                    None => (None, None),
-                };
                 FieldLike {
-                    bitfield_size,
-                    array_shape,
+                    sizing,
                     comment,
                     ..typed
                 }
@@ -755,6 +769,274 @@ impl<'s, 'a: 's> TryFrom<&'s [Token<'a>]> for Expression<'a> {
     fn try_from(value: &'s [Token<'a>]) -> Result<Self, Self::Error> {
         let c_toks = VkXMLTokens(value.iter().cloned().map(VkXMLToken::C).collect());
         c_with_vk_ext::expr(&c_toks)
+    }
+}
+
+fn pointer_kind_tokens<'s>(pointer_kind: &Option<PointerKind>, tokens: &mut Vec<VkXMLToken<'s>>) {
+    match pointer_kind {
+        Some(PointerKind::Single) => tokens.push(VkXMLToken::C(Token::MulStar)),
+        Some(PointerKind::Double {
+            inner_is_const: true,
+        }) => {
+            tokens.push(VkXMLToken::C(Token::MulStar));
+            tokens.push(VkXMLToken::C(Token::Const));
+            tokens.push(VkXMLToken::C(Token::MulStar));
+        }
+        Some(PointerKind::Double {
+            inner_is_const: false,
+        }) => {
+            tokens.push(VkXMLToken::C(Token::MulStar));
+            tokens.push(VkXMLToken::C(Token::MulStar));
+        }
+        None => {}
+    };
+}
+
+fn typed_tag_tokens<'s, 'a: 's>(
+    field: &'s FieldLike<'a>,
+    name_is_tag: bool,
+    tokens: &mut Vec<VkXMLToken<'s>>,
+) {
+    if field.is_const {
+        tokens.push(VkXMLToken::C(Token::Const));
+    }
+    if matches!(field.type_name, TypeSpecifier::Struct(_)) {
+        tokens.push(VkXMLToken::C(Token::Struct));
+    }
+    tokens.push(VkXMLToken::TextTag {
+        name: Cow::Borrowed("type"),
+        text: Cow::Borrowed(field.type_name.as_identifier()),
+    });
+    pointer_kind_tokens(&field.pointer_kind, tokens);
+    if name_is_tag {
+        tokens.push(VkXMLToken::TextTag {
+            name: Cow::Borrowed("name"),
+            text: Cow::Borrowed(&field.name),
+        });
+    } else {
+        tokens.push(VkXMLToken::C(Token::Identifier(&field.name)));
+    }
+}
+
+impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FieldLike<'a> {
+    const PARSING_MACROS: bool = false;
+    const OBJC_COMPAT: bool = false;
+
+    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+        c_with_vk_ext::field_like(tokens)
+    }
+}
+
+impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s FieldLike<'a> {
+    fn into(self) -> Vec<VkXMLToken<'s>> {
+        let mut tokens = Vec::with_capacity(12);
+        typed_tag_tokens(self, true, &mut tokens);
+        match &self.sizing {
+            Some(FieldLikeSizing::BitfieldSize(bitfield_size)) => {
+                tokens.push(VkXMLToken::C(Token::Colon));
+                tokens.push(VkXMLToken::C(Token::Constant(Constant::Integer(
+                    bitfield_size.get().into(),
+                ))));
+            }
+            Some(FieldLikeSizing::ArrayShape(array_shape)) => {
+                for shape in array_shape.iter() {
+                    tokens.push(VkXMLToken::C(Token::LBrack));
+
+                    match shape {
+                        ArrayLength::Static(n) => tokens.push(VkXMLToken::C(Token::Constant(
+                            Constant::Integer(n.get().into()),
+                        ))),
+                        ArrayLength::Constant(c) => {
+                            tokens.push(VkXMLToken::TextTag {
+                                name: Cow::Borrowed("enum"),
+                                text: c.clone(),
+                            });
+                        }
+                    }
+                    tokens.push(VkXMLToken::C(Token::RBrack));
+                }
+            }
+            None => {}
+        }
+        if let Some(comment) = self.comment.as_ref() {
+            tokens.push(VkXMLToken::TextTag {
+                name: Cow::Borrowed("comment"),
+                text: comment.clone(),
+            });
+        }
+        tokens
+    }
+}
+
+impl<'s, 'a: 's> TryFromTokens<'s, 'a> for BaseTypeType<'a> {
+    const PARSING_MACROS: bool = true;
+    const OBJC_COMPAT: bool = true;
+
+    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+        c_with_vk_ext::type_basetype(tokens)
+    }
+}
+
+impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s BaseTypeType<'a> {
+    fn into(self) -> Vec<VkXMLToken<'s>> {
+        match self {
+            BaseTypeType::Forward(name) => {
+                vec![
+                    VkXMLToken::C(Token::Struct),
+                    VkXMLToken::TextTag {
+                        name: Cow::Borrowed("name"),
+                        text: name.clone(),
+                    },
+                    VkXMLToken::C(Token::SemiColon),
+                ]
+            }
+            BaseTypeType::TypeDef(typedef) => {
+                let mut tokens = Vec::with_capacity(12);
+                tokens.push(VkXMLToken::C(Token::TypeDef));
+                typed_tag_tokens(typedef, true, &mut tokens);
+                tokens.push(VkXMLToken::C(Token::SemiColon));
+                tokens
+            }
+            BaseTypeType::DefineGuarded { pre, name, post } => pre
+                .iter()
+                .cloned()
+                .map(VkXMLToken::C)
+                .chain(std::iter::once(VkXMLToken::TextTag {
+                    name: Cow::Borrowed("name"),
+                    text: name.clone(),
+                }))
+                .chain(post.iter().cloned().map(VkXMLToken::C))
+                .collect(),
+        }
+    }
+}
+
+impl<'s, 'a: 's> TryFromTokens<'s, 'a> for DefineType<'a> {
+    const PARSING_MACROS: bool = true;
+    const OBJC_COMPAT: bool = false;
+
+    fn try_from_tokens(_tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+        unimplemented!()
+    }
+
+    fn try_from_node(node: roxmltree::Node<'a, 's>) -> Result<Self, crate::ErrorKind> {
+        let tokens = vk_tokenize(node, Self::PARSING_MACROS, Self::OBJC_COMPAT)?;
+        c_with_vk_ext::type_define(&tokens, crate::try_attribute(node, "name")?, None)
+            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
+    }
+}
+
+impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s DefineType<'a> {
+    fn into(self) -> Vec<VkXMLToken<'s>> {
+        let mut tokens = Vec::with_capacity(12);
+        if let Some(comment) = self.deprecation_comment.as_deref() {
+            tokens.push(VkXMLToken::C(Token::_DeprecationComment(comment)));
+            tokens.push(VkXMLToken::C(Token::NewLine));
+        }
+        if self.is_disabled {
+            tokens.push(VkXMLToken::C(Token::_MalformedDefine));
+        } else {
+            tokens.push(VkXMLToken::C(Token::Pound));
+            tokens.push(VkXMLToken::C(Token::Identifier("define")));
+        }
+        tokens.push(VkXMLToken::TextTag {
+            name: Cow::Borrowed("name"),
+            text: self.name.clone(),
+        });
+        match &self.value {
+            DefineTypeValue::Expression(expr) => {
+                let mut expr_tokens = Vec::new();
+                expr.to_tokens(&mut expr_tokens, false);
+                tokens.extend(expr_tokens.into_iter().map(VkXMLToken::C));
+            }
+            DefineTypeValue::FunctionDefine { params, expression } => {
+                tokens.push(VkXMLToken::C(Token::LParen));
+                let mut is_first = true;
+                for param in params.iter() {
+                    if is_first {
+                        is_first = false;
+                    } else {
+                        tokens.push(VkXMLToken::C(Token::Comma));
+                    }
+                    tokens.push(VkXMLToken::C(Token::Identifier(param.as_ref())));
+                }
+                tokens.push(VkXMLToken::C(Token::RParen));
+                tokens.push(VkXMLToken::C(Token::Whitespace));
+                tokens.extend(expression.iter().cloned().map(VkXMLToken::C));
+            }
+            DefineTypeValue::MacroFunctionCall {
+                name: fn_name,
+                args,
+            } => {
+                tokens.push(VkXMLToken::C(Token::Whitespace));
+                tokens.push(VkXMLToken::TextTag {
+                    name: Cow::Borrowed("type"),
+                    text: fn_name.clone(),
+                });
+                tokens.push(VkXMLToken::C(Token::LParen));
+                let mut expr_tokens = Vec::with_capacity(32);
+                let mut is_first = true;
+                for arg in args.iter() {
+                    if is_first {
+                        is_first = false;
+                    } else {
+                        tokens.push(VkXMLToken::C(Token::Comma));
+                    }
+                    arg.to_tokens(&mut expr_tokens, false);
+                    tokens.extend(expr_tokens.drain(..).map(VkXMLToken::C));
+                }
+                tokens.push(VkXMLToken::C(Token::RParen));
+            }
+            DefineTypeValue::Code(c_tokens) => {
+                return c_tokens.iter().cloned().map(VkXMLToken::C).collect();
+            }
+        }
+        tokens
+    }
+}
+
+impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FnPtrType<'a> {
+    const PARSING_MACROS: bool = false;
+    const OBJC_COMPAT: bool = false;
+
+    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+        c_with_vk_ext::type_funcptr(tokens, None)
+    }
+}
+
+impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s FnPtrType<'a> {
+    fn into(self) -> Vec<VkXMLToken<'s>> {
+        let mut tokens = Vec::with_capacity(32);
+        tokens.push(VkXMLToken::C(Token::TypeDef));
+        tokens.push(VkXMLToken::C(Token::Identifier(
+            self.name_and_return.type_name.as_identifier(),
+        )));
+        pointer_kind_tokens(&self.name_and_return.pointer_kind, &mut tokens);
+        tokens.push(VkXMLToken::C(Token::LParen));
+        tokens.push(VkXMLToken::C(Token::Identifier("VKAPI_PTR")));
+        tokens.push(VkXMLToken::C(Token::MulStar));
+        tokens.push(VkXMLToken::TextTag {
+            name: Cow::Borrowed("name"),
+            text: Cow::Borrowed(&self.name_and_return.name),
+        });
+        tokens.push(VkXMLToken::C(Token::RParen));
+        tokens.push(VkXMLToken::C(Token::LParen));
+        if let Some(params) = self.params.as_deref() {
+            let mut is_first = true;
+            for param in params {
+                if is_first {
+                    is_first = false;
+                } else {
+                    tokens.push(VkXMLToken::C(Token::Comma));
+                }
+                typed_tag_tokens(param, false, &mut tokens);
+            }
+        } else {
+            tokens.push(VkXMLToken::C(Token::Void));
+        }
+        tokens.push(VkXMLToken::C(Token::RParen));
+        tokens.push(VkXMLToken::C(Token::SemiColon));
+        tokens
     }
 }
 

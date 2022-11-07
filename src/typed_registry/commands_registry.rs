@@ -8,7 +8,7 @@ use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Command<'a> {
-    pub proto: FieldLike<'a>,
+    pub proto: Proto<'a>,
     pub params: Vec<CommandParam<'a>>,
 
     pub success_codes: Option<SuccessCodes<'a>>,
@@ -22,6 +22,12 @@ pub struct Command<'a> {
     pub video_coding: Option<VideoCoding>,
     pub renderpass: Option<Renderpass>,
     pub comment: Option<Cow<'a, str>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub struct Proto<'a> {
+    pub base: FieldLike<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +150,18 @@ pub enum Task {
     Synchronization,
     #[strum(serialize = "indirection")]
     Indirection,
+}
+
+impl<'a, 'input> Parse<'a, 'input> for Proto<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if node.has_tag_name("proto") {
+            Ok(Some(Proto {
+                base: Parse::parse(node)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {

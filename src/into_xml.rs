@@ -319,64 +319,27 @@ impl<'a> IntoXMLElement for Tag<'a> {
     const TAG: &'static str = "tag";
 }
 
-fn tokens_to_string(tokens: &[Token]) -> String {
-    use std::fmt::Write;
-
-    let mut code = String::new();
+fn write_tokens<W: Write>(tokens: Vec<VkXMLToken>, writer: &mut Writer<W>) -> Result {
     let mut last_ident_like = false;
     for token in tokens {
-        let is_ident_like = token.is_ident_like();
-        if last_ident_like && is_ident_like {
-            write!(code, " {}", token).unwrap();
-        } else {
-            write!(code, "{}", token).unwrap();
+        match token {
+            VkXMLToken::C(token) => {
+                let is_ident_like = token.is_ident_like();
+                let s = if last_ident_like && is_ident_like {
+                    format!(" {}", token)
+                } else {
+                    token.to_string()
+                };
+                writer.write_event(Event::Text(BytesText::new(&s)))?;
+                last_ident_like = is_ident_like;
+            }
+            VkXMLToken::TextTag { name, text } => {
+                last_ident_like = false;
+                writer
+                    .create_element2(name.as_ref())
+                    .write_escaped_text(text.as_ref())?
+            }
         }
-        last_ident_like = is_ident_like;
-    }
-    code
-}
-
-fn write_typed_tag<W: Write>(
-    name: &str,
-    type_name: &TypeSpecifier,
-    is_const: bool,
-    pointer_kind: &Option<PointerKind>,
-    name_is_tag: bool,
-    writer: &mut Writer<W>,
-) -> Result {
-    let is_struct = matches!(type_name, TypeSpecifier::Struct(_));
-    let pre = match (is_const, is_struct) {
-        (true, true) => "const struct ",
-        (true, false) => "const ",
-        (false, true) => "struct ",
-        (false, false) => "",
-    };
-    writer.write_event(Event::Text(BytesText::new(pre)))?;
-    let ty_name = match type_name {
-        TypeSpecifier::TypedefName(id) => id.to_string(),
-        TypeSpecifier::Struct(id) => id.to_string(),
-        TypeSpecifier::Union(_) => todo!(),
-        TypeSpecifier::Enum(_) => todo!(),
-        ty => ty.to_string(),
-    };
-    writer
-        .create_element2("type")
-        .write_escaped_text(&ty_name)?;
-    let post = match pointer_kind {
-        Some(PointerKind::Single) => "* ",
-        Some(PointerKind::Double {
-            inner_is_const: true,
-        }) => "* const* ",
-        Some(PointerKind::Double {
-            inner_is_const: false,
-        }) => "** ",
-        None => " ",
-    };
-    writer.write_event(Event::Text(BytesText::new(post)))?;
-    if name_is_tag {
-        writer.create_element2("name").write_escaped_text(&name)?;
-    } else {
-        writer.write_event(Event::Text(BytesText::new(name)))?;
     }
     Ok(())
 }
@@ -385,21 +348,7 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
     const TAG: &'static str = "";
 
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        let FieldLike {
-            name,
-            type_name,
-            is_const,
-            pointer_kind,
-            bitfield_size,
-            array_shape,
-            dynamic_shape,
-            extern_sync,
-            optional,
-            no_auto_validity,
-            object_type,
-            comment,
-        } = self;
-        let element = match dynamic_shape {
+        let element = match &self.dynamic_shape {
             Some(DynamicShapeKind::Expression { latex_expr, c_expr }) => element
                 .with_fmt_attribute("len", format_args!("latexmath:{}", latex_expr))
                 .with_fmt_attribute("altlen", c_expr),
@@ -410,36 +359,11 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
             None => element,
         };
         element
-            .with_opt_attribute("optional", optional.as_ref())
-            .with_opt_attribute("noautovalidity", no_auto_validity.as_ref())
-            .with_opt_attribute("externsync", extern_sync.as_ref())
-            .with_opt_attribute("objecttype", object_type.as_ref())
-            .write_inner_content_(|writer| {
-                write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
-                if let Some(bitfield_size) = bitfield_size {
-                    writer
-                        .write_event(Event::Text(BytesText::new(&format!(":{}", bitfield_size))))?;
-                }
-                if let Some(array_shape) = array_shape {
-                    for shape in array_shape.iter() {
-                        writer.write_event(Event::Text(BytesText::new("[")))?;
-                        match shape {
-                            ArrayLength::Static(n) => writer
-                                .write_event(Event::Text(BytesText::new(&format!("{}", n))))?,
-                            ArrayLength::Constant(c) => {
-                                writer.create_element2("enum").write_escaped_text(c)?
-                            }
-                        }
-                        writer.write_event(Event::Text(BytesText::new("]")))?;
-                    }
-                }
-                if let Some(comment) = comment {
-                    writer
-                        .create_element2("comment")
-                        .write_escaped_text(comment)?;
-                }
-                Ok(())
-            })
+            .with_opt_attribute("optional", self.optional.as_ref())
+            .with_opt_attribute("noautovalidity", self.no_auto_validity.as_ref())
+            .with_opt_attribute("externsync", self.extern_sync.as_ref())
+            .with_opt_attribute("objecttype", self.object_type.as_ref())
+            .write_inner_content_(|writer| write_tokens(self.into(), writer))
     }
 }
 
@@ -507,63 +431,12 @@ impl<'a> IntoXMLElement for DefineType<'a> {
     }
 
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        let Self {
-            name,
-            comment,
-            requires,
-            deprecation_comment,
-            is_disabled,
-            value,
-        } = self;
-        let elem = element
-            .with_opt_attribute("requires", requires.as_deref())
-            .with_opt_attribute("comment", comment.as_deref());
-        let define_macro = if *is_disabled {
-            "//#define "
-        } else {
-            "#define "
-        };
-        let define_macro = if let Some(comment) = deprecation_comment {
-            Cow::Owned(format!("// DEPRECATED:{}\n{}", comment, define_macro))
-        } else {
-            Cow::Borrowed(define_macro)
-        };
-        match value {
-            DefineTypeValue::Expression(expr) => elem.write_inner_content_(|writer| {
-                writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
-                writer.create_element2("name").write_escaped_text(name)?;
-                let value = format!(" {}", expr);
-                writer.write_event(Event::Text(BytesText::new(&value)))
-            }),
-            DefineTypeValue::FunctionDefine { params, expression } => {
-                elem.write_inner_content_(|writer| {
-                    writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
-                    writer.create_element2("name").write_escaped_text(name)?;
-                    let params = params.join(", ");
-                    let value = format!("({}) {}", params, tokens_to_string(expression));
-                    writer.write_event(Event::Text(BytesText::new(&value)))
-                })
-            }
-            DefineTypeValue::MacroFunctionCall {
-                name: fn_name,
-                args,
-            } => elem.write_inner_content_(|writer| {
-                writer.write_event(Event::Text(BytesText::new(define_macro.as_ref())))?;
-                writer.create_element2("name").write_escaped_text(name)?;
-                writer.write_event(Event::Text(BytesText::new(" ")))?;
-                writer.create_element2("type").write_escaped_text(fn_name)?;
-                let args = args
-                    .iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let value = format!("({})", args);
-                writer.write_event(Event::Text(BytesText::new(&value)))
-            }),
-            DefineTypeValue::Code(tokens) => elem
-                .with_fmt_attribute("name", name)
-                .write_escaped_text(&tokens_to_string(tokens)),
-        }
+        let name_is_attr = matches!(self.value, DefineTypeValue::Code(_));
+        element
+            .with_opt_attribute("requires", self.requires.as_deref())
+            .with_opt_attribute("comment", self.comment.as_deref())
+            .with_opt_attribute("name", name_is_attr.then_some(self.name.as_ref()))
+            .write_inner_content_(|writer| write_tokens(self.into(), writer))
     }
 }
 
@@ -575,32 +448,7 @@ impl<'a> IntoXMLElement for BaseTypeType<'a> {
     }
 
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        match self {
-            BaseTypeType::Forward(name) => element.write_inner_content_(|writer| {
-                writer.write_event(Event::Text(BytesText::new("struct ")))?;
-                writer.create_element2("name").write_escaped_text(name)?;
-                writer.write_event(Event::Text(BytesText::new(";")))
-            }),
-            BaseTypeType::TypeDef(field) => element.write_inner_content_(|writer| {
-                writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
-                let FieldLike {
-                    name,
-                    type_name,
-                    is_const,
-                    pointer_kind,
-                    ..
-                } = field;
-                write_typed_tag(name, type_name, *is_const, pointer_kind, true, writer)?;
-                writer.write_event(Event::Text(BytesText::new(";")))
-            }),
-            BaseTypeType::DefineGuarded { pre, name, post } => {
-                element.write_inner_content_(|writer| {
-                    writer.write_event(Event::Text(BytesText::new(&tokens_to_string(pre))))?;
-                    writer.create_element2("name").write_escaped_text(name)?;
-                    writer.write_event(Event::Text(BytesText::new(&tokens_to_string(post))))
-                })
-            }
-        }
+        element.write_inner_content_(|writer| write_tokens(self.into(), writer))
     }
 }
 
@@ -686,57 +534,9 @@ impl<'a> IntoXMLElement for FnPtrType<'a> {
     }
 
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        let Self {
-            name_and_return,
-            requires,
-            params,
-        } = self;
         element
-            .with_opt_attribute("requires", requires.as_deref())
-            .write_inner_content_(|writer| {
-                writer.write_event(Event::Text(BytesText::from_escaped("typedef ")))?;
-                writer.write_event(Event::Text(BytesText::new(
-                    &name_and_return.type_name.to_string(),
-                )))?;
-                let post = match name_and_return.pointer_kind {
-                    Some(PointerKind::Single) => "*",
-                    Some(PointerKind::Double {
-                        inner_is_const: true,
-                    }) => "* const*",
-                    Some(PointerKind::Double {
-                        inner_is_const: false,
-                    }) => "**",
-                    None => "",
-                };
-                writer.write_event(Event::Text(BytesText::new(post)))?;
-                writer.write_event(Event::Text(BytesText::new(" (VKAPI_PTR *")))?;
-                writer
-                    .create_element2("name")
-                    .write_escaped_text(&name_and_return.name)?;
-                writer.write_event(Event::Text(BytesText::new(")(")))?;
-                if let Some(params) = params {
-                    let mut is_first = true;
-                    for param in params {
-                        if is_first {
-                            is_first = false;
-                            writer.write_event(Event::Text(BytesText::new("\n     ")))?;
-                        } else {
-                            writer.write_event(Event::Text(BytesText::new(",\n     ")))?;
-                        }
-                        let FieldLike {
-                            name,
-                            type_name,
-                            is_const,
-                            pointer_kind,
-                            ..
-                        } = param;
-                        write_typed_tag(name, type_name, *is_const, pointer_kind, false, writer)?;
-                    }
-                    writer.write_event(Event::Text(BytesText::new(");")))
-                } else {
-                    writer.write_event(Event::Text(BytesText::new("void);")))
-                }
-            })
+            .with_opt_attribute("requires", self.requires.as_deref())
+            .write_inner_content_(|writer| write_tokens(self.into(), writer))
     }
 }
 
@@ -1016,7 +816,7 @@ impl<'a> IntoXMLElement for Command<'a> {
             .with_opt_attribute("renderpass", renderpass.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_inner_content_(|writer| {
-                proto.write_element(writer.create_element2("proto"))?;
+                proto.write_xml(writer)?;
                 for param in params.iter() {
                     param.write_xml(writer)?;
                 }
@@ -1027,6 +827,15 @@ impl<'a> IntoXMLElement for Command<'a> {
     }
 
     const TAG: &'static str = "command";
+}
+
+impl<'a> IntoXMLElement for Proto<'a> {
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        let Proto { base } = self;
+        base.write_element(element)
+    }
+
+    const TAG: &'static str = "proto";
 }
 
 impl<'a> IntoXMLElement for CommandParam<'a> {

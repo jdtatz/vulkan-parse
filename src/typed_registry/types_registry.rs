@@ -9,8 +9,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, c_with_vk_ext, text_value, try_attribute, try_attribute_fs, try_attribute_sep,
-    vk_tokenize, Expression, Parse, ParseResult, Token, TypeSpecifier,
+    attribute, text_value, try_attribute, try_attribute_fs, try_attribute_sep, Expression, Parse,
+    ParseResult, Token, TryFromTokens, TypeSpecifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,6 +234,14 @@ pub enum NoAutoValidityKind {
     Value,
 }
 
+// TODO Bikeshed needed
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+pub enum FieldLikeSizing<'a> {
+    BitfieldSize(NonZeroU8),
+    ArrayShape(Vec<ArrayLength<'a>>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct FieldLike<'a> {
@@ -242,8 +250,7 @@ pub struct FieldLike<'a> {
     /// if true, then either a const pointer or array
     pub is_const: bool,
     pub pointer_kind: Option<PointerKind>,
-    pub bitfield_size: Option<NonZeroU8>,
-    pub array_shape: Option<Vec<ArrayLength<'a>>>,
+    pub sizing: Option<FieldLikeSizing<'a>>,
     pub dynamic_shape: Option<DynamicShapeKind<'a>>,
     pub extern_sync: Option<ExternSyncKind<'a>>,
     pub optional: Option<OptionalKind>,
@@ -262,8 +269,7 @@ impl<'a> FieldLike<'a> {
             type_name,
             is_const: false,
             pointer_kind: None,
-            bitfield_size: None,
-            array_shape: None,
+            sizing: None,
             dynamic_shape: None,
             extern_sync: None,
             optional: None,
@@ -546,23 +552,16 @@ impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, true, false)?;
-        c_with_vk_ext::type_define(
-            &tokens,
-            try_attribute(node, "name")?,
-            try_attribute(node, "requires")?,
-        )
-        .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
-        .map(Some)
+        Ok(Some(Self {
+            requires: try_attribute(node, "requires")?,
+            ..Self::try_from_node(node)?
+        }))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for BaseTypeType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, true, true)?;
-        c_with_vk_ext::type_basetype(&tokens)
-            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
-            .map(Some)
+        Ok(Some(Self::try_from_node(node)?))
     }
 }
 
@@ -623,10 +622,10 @@ impl<'a, 'input> Parse<'a, 'input> for EnumType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, false, false)?;
-        c_with_vk_ext::type_funcptr(&tokens, try_attribute(node, "requires")?)
-            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
-            .map(Some)
+        Ok(Some(Self {
+            requires: try_attribute(node, "requires")?,
+            ..Self::try_from_node(node)?
+        }))
     }
 }
 
@@ -673,9 +672,6 @@ impl<'a, 'input> Parse<'a, 'input> for Member<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let tokens = vk_tokenize(node, false, false)?;
-        let f = c_with_vk_ext::field_like(&tokens)
-            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))?;
         let dynamic_shape = try_attribute(node, "len")?
             .map(|len: &str| {
                 Ok(if let Some(latex_expr) = len.strip_prefix("latexmath:") {
@@ -698,7 +694,7 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
             optional: try_attribute_fs(node, "optional")?,
             no_auto_validity: try_attribute(node, "noautovalidity")?,
             object_type: try_attribute(node, "objecttype")?,
-            ..f
+            ..Self::try_from_node(node)?
         }))
     }
 }

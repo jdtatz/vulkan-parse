@@ -6,7 +6,7 @@ use roxmltree::{Node, NodeId};
 use crate::{Container, LexerError, ParseError, Registry, Seperated};
 
 #[derive(Debug)]
-pub(crate) enum ErrorKind {
+pub enum ErrorKind {
     NoMatch(NodeId),
     /// Empty elements are disallowed in vulkan's mixed pseudo-c/xml
     EmptyElement(NodeId),
