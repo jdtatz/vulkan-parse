@@ -9,8 +9,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, text_value, try_attribute, try_attribute_fs, try_attribute_sep, Expression, Parse,
-    ParseResult, Token, TryFromTokens, TypeSpecifier,
+    attribute, text_value, tokenize, try_attribute, try_attribute_fs, try_attribute_sep,
+    Expression, Parse, ParseResult, Token, TryFromTokens, TypeSpecifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,21 +323,39 @@ pub struct IncludeType<'a> {
     pub is_local_include: Option<bool>,
 }
 
-/// <type category="define">
+/// <type category="define" name="...">
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub struct GuardedDefine<'a> {
+    pub name: Cow<'a, str>,
+    pub comment: Option<Cow<'a, str>>,
+    pub requires: Option<Cow<'a, str>>,
+    pub code: Vec<Token<'a>>,
+}
+
+/// <type category="define">...<name>...</name>...</type>
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-pub struct DefineType<'a> {
+pub struct MacroDefine<'a> {
     pub name: Cow<'a, str>,
     pub comment: Option<Cow<'a, str>>,
     pub requires: Option<Cow<'a, str>>,
     pub deprecation_comment: Option<Cow<'a, str>>,
     pub is_disabled: bool,
-    pub value: DefineTypeValue<'a>,
+    pub value: MacroDefineValue<'a>,
+}
+
+/// <type category="define">
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum DefineType<'a> {
+    GuardedMacro(GuardedDefine<'a>),
+    Macro(MacroDefine<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum DefineTypeValue<'a> {
+pub enum MacroDefineValue<'a> {
     Expression(Expression<'a>),
     FunctionDefine {
         params: Vec<Cow<'a, str>>,
@@ -347,10 +365,9 @@ pub enum DefineTypeValue<'a> {
         name: Cow<'a, str>,
         args: Vec<Expression<'a>>,
     },
-    Code(Vec<Token<'a>>),
 }
 
-impl<'a> DefineTypeValue<'a> {
+impl<'a> MacroDefineValue<'a> {
     #[must_use]
     pub fn as_expr(&self) -> Option<Cow<'_, Expression<'a>>> {
         match self {
@@ -550,12 +567,42 @@ impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
+impl<'a, 'input> Parse<'a, 'input> for GuardedDefine<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if let Some(name) = try_attribute(node, "name")? {
+            let code = node
+                .text()
+                .ok_or_else(|| crate::ErrorKind::EmptyElement(node.id()))?;
+            Ok(Some(Self {
+                name,
+                comment: try_attribute(node, "comment")?,
+                requires: try_attribute(node, "requires")?,
+                code: tokenize(code, true, true)
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| crate::ErrorKind::LexerError(e, node.id()))?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for MacroDefine<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Self {
             requires: try_attribute(node, "requires")?,
             ..Self::try_from_node(node)?
         }))
+    }
+}
+
+impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        Ok(if let Some(g) = GuardedDefine::try_parse(node)? {
+            Some(Self::GuardedMacro(g))
+        } else {
+            MacroDefine::try_parse(node)?.map(Self::Macro)
+        })
     }
 }
 

@@ -319,7 +319,10 @@ impl<'a> IntoXMLElement for Tag<'a> {
     const TAG: &'static str = "tag";
 }
 
-fn write_tokens<W: Write>(tokens: Vec<VkXMLToken>, writer: &mut Writer<W>) -> Result {
+fn write_tokens<'t, W: Write>(
+    tokens: impl IntoIterator<Item = VkXMLToken<'t>>,
+    writer: &mut Writer<W>,
+) -> Result {
     let mut last_ident_like = false;
     for token in tokens {
         match token {
@@ -363,7 +366,7 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
             .with_opt_attribute("noautovalidity", self.no_auto_validity.as_ref())
             .with_opt_attribute("externsync", self.extern_sync.as_ref())
             .with_opt_attribute("objecttype", self.object_type.as_ref())
-            .write_inner_content_(|writer| write_tokens(self.into(), writer))
+            .write_inner_content_(|writer| write_tokens(self.into_tokens(), writer))
     }
 }
 
@@ -431,12 +434,35 @@ impl<'a> IntoXMLElement for DefineType<'a> {
     }
 
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        let name_is_attr = matches!(self.value, DefineTypeValue::Code(_));
+        match self {
+            DefineType::GuardedMacro(g) => g.write_element(element),
+            DefineType::Macro(m) => m.write_element(element),
+        }
+    }
+}
+
+impl<'a> IntoXMLElement for GuardedDefine<'a> {
+    const TAG: &'static str = "type";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
+        element
+            .with_fmt_attribute("name", &self.name)
+            .with_opt_attribute("requires", self.requires.as_deref())
+            .with_opt_attribute("comment", self.comment.as_deref())
+            .write_inner_content_(|writer| {
+                write_tokens(self.code.iter().cloned().map(VkXMLToken::C), writer)
+            })
+    }
+}
+
+impl<'a> IntoXMLElement for MacroDefine<'a> {
+    const TAG: &'static str = "type";
+
+    fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         element
             .with_opt_attribute("requires", self.requires.as_deref())
             .with_opt_attribute("comment", self.comment.as_deref())
-            .with_opt_attribute("name", name_is_attr.then_some(self.name.as_ref()))
-            .write_inner_content_(|writer| write_tokens(self.into(), writer))
+            .write_inner_content_(|writer| write_tokens(self.into_tokens(), writer))
     }
 }
 
@@ -448,7 +474,7 @@ impl<'a> IntoXMLElement for BaseTypeType<'a> {
     }
 
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
-        element.write_inner_content_(|writer| write_tokens(self.into(), writer))
+        element.write_inner_content_(|writer| write_tokens(self.into_tokens(), writer))
     }
 }
 
@@ -536,7 +562,7 @@ impl<'a> IntoXMLElement for FnPtrType<'a> {
     fn write_element<'e, W: Write>(&self, element: ElementWriter2<'e, W>) -> Result {
         element
             .with_opt_attribute("requires", self.requires.as_deref())
-            .write_inner_content_(|writer| write_tokens(self.into(), writer))
+            .write_inner_content_(|writer| write_tokens(self.into_tokens(), writer))
     }
 }
 

@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    lexer::tokenize, ArrayLength, BaseTypeType, Constant, DefineType, DefineTypeValue, ErrorKind,
-    FieldLike, FieldLikeSizing, FnPtrType, ParseResult, PointerKind, Token,
+    lexer::tokenize, ArrayLength, BaseTypeType, Constant, ErrorKind, FieldLike, FieldLikeSizing,
+    FnPtrType, MacroDefine, MacroDefineValue, ParseResult, PointerKind, Token,
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -693,26 +693,19 @@ peg::parser! {
          / expected!("#define")
 
         /// <type category="define"> ... </type>
-        pub rule type_define(name_attr: Option<&'a str>, requires_attr: Option<&'a str>) -> DefineType<'a>
+        pub rule type_define() -> MacroDefine<'a>
             = dc:quiet!{([VkXMLToken::C(Token::_DeprecationComment(c))] {c})?} "\n"* is_disabled:(define_macro() {false} / "//#define" {true}) name:name_tag() value:(
-                "(" params:(identifier() ** ",") ")" expression:(([VkXMLToken::C(c)] {c.clone()})+) { DefineTypeValue::FunctionDefine { params, expression } }
-                /  e:expr() { DefineTypeValue::Expression(e) }
-                / macro_name:type_tag() "(" args:(expr() ** ",") ","? ")" { DefineTypeValue::MacroFunctionCall { name: macro_name, args } }
-            ) { DefineType {
+                "(" params:(identifier() ** ",") ")" expression:(([VkXMLToken::C(c)] {c.clone()})+) { MacroDefineValue::FunctionDefine { params, expression } }
+                /  e:expr() { MacroDefineValue::Expression(e) }
+                / macro_name:type_tag() "(" args:(expr() ** ",") ","? ")" { MacroDefineValue::MacroFunctionCall { name: macro_name, args } }
+            ) { MacroDefine {
                 name,
                 comment: None,
-                requires: requires_attr.map(Cow::Borrowed),
+                requires: None,
                 deprecation_comment: dc.map(|v| Cow::Borrowed(*v)),
                 is_disabled,
                 value,
             } }
-            / l:(([VkXMLToken::C(c)] {c.clone()})+) {
-                name_attr.unwrap_or_else(|| panic!("{l:?}"));
-                DefineType {
-                name: name_attr.map(Cow::Borrowed).expect("If no name is found inside the tag <type category=\"define\"> then it must be an attribute"),
-                comment: None, requires: requires_attr.map(Cow::Borrowed), deprecation_comment: None, is_disabled: false, value: DefineTypeValue::Code(l)
-            } }
-
 
         rule vkapi_ptr_macro()
             = quiet!{[VkXMLToken::C(Token::Identifier(id)) if *id == "VKAPI_PTR"]}
@@ -772,6 +765,15 @@ impl<'s, 'a: 's> TryFrom<&'s [Token<'a>]> for Expression<'a> {
     }
 }
 
+pub trait IntoVkXMLTokens<'t> {
+    fn to_tokens(&'t self, tokens: &mut Vec<VkXMLToken<'t>>);
+    fn into_tokens(&'t self) -> Vec<VkXMLToken<'t>> {
+        let mut tokens = Vec::with_capacity(32);
+        self.to_tokens(&mut tokens);
+        tokens
+    }
+}
+
 fn pointer_kind_tokens<'s>(pointer_kind: &Option<PointerKind>, tokens: &mut Vec<VkXMLToken<'s>>) {
     match pointer_kind {
         Some(PointerKind::Single) => tokens.push(VkXMLToken::C(Token::MulStar)),
@@ -827,10 +829,9 @@ impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FieldLike<'a> {
     }
 }
 
-impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s FieldLike<'a> {
-    fn into(self) -> Vec<VkXMLToken<'s>> {
-        let mut tokens = Vec::with_capacity(12);
-        typed_tag_tokens(self, true, &mut tokens);
+impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FieldLike<'a> {
+    fn to_tokens(&'s self, tokens: &mut Vec<VkXMLToken<'s>>) {
+        typed_tag_tokens(self, true, tokens);
         match &self.sizing {
             Some(FieldLikeSizing::BitfieldSize(bitfield_size)) => {
                 tokens.push(VkXMLToken::C(Token::Colon));
@@ -864,7 +865,6 @@ impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s FieldLike<'a> {
                 text: comment.clone(),
             });
         }
-        tokens
     }
 }
 
@@ -877,58 +877,45 @@ impl<'s, 'a: 's> TryFromTokens<'s, 'a> for BaseTypeType<'a> {
     }
 }
 
-impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s BaseTypeType<'a> {
-    fn into(self) -> Vec<VkXMLToken<'s>> {
+impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s BaseTypeType<'a> {
+    fn to_tokens(&'s self, tokens: &mut Vec<VkXMLToken<'s>>) {
         match self {
-            BaseTypeType::Forward(name) => {
-                vec![
-                    VkXMLToken::C(Token::Struct),
-                    VkXMLToken::TextTag {
-                        name: Cow::Borrowed("name"),
-                        text: name.clone(),
-                    },
-                    VkXMLToken::C(Token::SemiColon),
-                ]
-            }
-            BaseTypeType::TypeDef(typedef) => {
-                let mut tokens = Vec::with_capacity(12);
-                tokens.push(VkXMLToken::C(Token::TypeDef));
-                typed_tag_tokens(typedef, true, &mut tokens);
-                tokens.push(VkXMLToken::C(Token::SemiColon));
-                tokens
-            }
-            BaseTypeType::DefineGuarded { pre, name, post } => pre
-                .iter()
-                .cloned()
-                .map(VkXMLToken::C)
-                .chain(std::iter::once(VkXMLToken::TextTag {
+            BaseTypeType::Forward(name) => tokens.extend([
+                VkXMLToken::C(Token::Struct),
+                VkXMLToken::TextTag {
                     name: Cow::Borrowed("name"),
                     text: name.clone(),
-                }))
-                .chain(post.iter().cloned().map(VkXMLToken::C))
-                .collect(),
+                },
+                VkXMLToken::C(Token::SemiColon),
+            ]),
+            BaseTypeType::TypeDef(typedef) => {
+                tokens.push(VkXMLToken::C(Token::TypeDef));
+                typed_tag_tokens(typedef, true, tokens);
+                tokens.push(VkXMLToken::C(Token::SemiColon));
+            }
+            BaseTypeType::DefineGuarded { pre, name, post } => {
+                tokens.extend(pre.iter().cloned().map(VkXMLToken::C));
+                tokens.push(VkXMLToken::TextTag {
+                    name: Cow::Borrowed("name"),
+                    text: name.clone(),
+                });
+                tokens.extend(post.iter().cloned().map(VkXMLToken::C));
+            }
         }
     }
 }
 
-impl<'s, 'a: 's> TryFromTokens<'s, 'a> for DefineType<'a> {
+impl<'s, 'a: 's> TryFromTokens<'s, 'a> for MacroDefine<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(_tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
-        unimplemented!()
-    }
-
-    fn try_from_node(node: roxmltree::Node<'a, 's>) -> Result<Self, crate::ErrorKind> {
-        let tokens = vk_tokenize(node, Self::PARSING_MACROS, Self::OBJC_COMPAT)?;
-        c_with_vk_ext::type_define(&tokens, crate::try_attribute(node, "name")?, None)
-            .map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
+    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+        c_with_vk_ext::type_define(tokens)
     }
 }
 
-impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s DefineType<'a> {
-    fn into(self) -> Vec<VkXMLToken<'s>> {
-        let mut tokens = Vec::with_capacity(12);
+impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s MacroDefine<'a> {
+    fn to_tokens(&'s self, tokens: &mut Vec<VkXMLToken<'s>>) {
         if let Some(comment) = self.deprecation_comment.as_deref() {
             tokens.push(VkXMLToken::C(Token::_DeprecationComment(comment)));
             tokens.push(VkXMLToken::C(Token::NewLine));
@@ -944,12 +931,12 @@ impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s DefineType<'a> {
             text: self.name.clone(),
         });
         match &self.value {
-            DefineTypeValue::Expression(expr) => {
+            MacroDefineValue::Expression(expr) => {
                 let mut expr_tokens = Vec::new();
                 expr.to_tokens(&mut expr_tokens, false);
                 tokens.extend(expr_tokens.into_iter().map(VkXMLToken::C));
             }
-            DefineTypeValue::FunctionDefine { params, expression } => {
+            MacroDefineValue::FunctionDefine { params, expression } => {
                 tokens.push(VkXMLToken::C(Token::LParen));
                 let mut is_first = true;
                 for param in params.iter() {
@@ -964,7 +951,7 @@ impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s DefineType<'a> {
                 tokens.push(VkXMLToken::C(Token::Whitespace));
                 tokens.extend(expression.iter().cloned().map(VkXMLToken::C));
             }
-            DefineTypeValue::MacroFunctionCall {
+            MacroDefineValue::MacroFunctionCall {
                 name: fn_name,
                 args,
             } => {
@@ -987,11 +974,7 @@ impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s DefineType<'a> {
                 }
                 tokens.push(VkXMLToken::C(Token::RParen));
             }
-            DefineTypeValue::Code(c_tokens) => {
-                return c_tokens.iter().cloned().map(VkXMLToken::C).collect();
-            }
         }
-        tokens
     }
 }
 
@@ -1004,14 +987,13 @@ impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FnPtrType<'a> {
     }
 }
 
-impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s FnPtrType<'a> {
-    fn into(self) -> Vec<VkXMLToken<'s>> {
-        let mut tokens = Vec::with_capacity(32);
+impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FnPtrType<'a> {
+    fn to_tokens(&'s self, tokens: &mut Vec<VkXMLToken<'s>>) {
         tokens.push(VkXMLToken::C(Token::TypeDef));
         tokens.push(VkXMLToken::C(Token::Identifier(
             self.name_and_return.type_name.as_identifier(),
         )));
-        pointer_kind_tokens(&self.name_and_return.pointer_kind, &mut tokens);
+        pointer_kind_tokens(&self.name_and_return.pointer_kind, tokens);
         tokens.push(VkXMLToken::C(Token::LParen));
         tokens.push(VkXMLToken::C(Token::Identifier("VKAPI_PTR")));
         tokens.push(VkXMLToken::C(Token::MulStar));
@@ -1029,14 +1011,13 @@ impl<'s, 'a: 's> Into<Vec<VkXMLToken<'s>>> for &'s FnPtrType<'a> {
                 } else {
                     tokens.push(VkXMLToken::C(Token::Comma));
                 }
-                typed_tag_tokens(param, false, &mut tokens);
+                typed_tag_tokens(param, false, tokens);
             }
         } else {
             tokens.push(VkXMLToken::C(Token::Void));
         }
         tokens.push(VkXMLToken::C(Token::RParen));
         tokens.push(VkXMLToken::C(Token::SemiColon));
-        tokens
     }
 }
 
