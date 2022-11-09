@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     fmt,
     num::{NonZeroU32, NonZeroU8},
+    ops,
     str::FromStr,
 };
 
@@ -446,7 +447,9 @@ pub struct EnumType<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct FnPtrType<'a> {
-    pub name_and_return: FieldLike<'a>,
+    pub name: Cow<'a, str>,
+    pub return_type_name: TypeSpecifier<'a>,
+    pub return_type_pointer_kind: Option<PointerKind>,
     pub requires: Option<Cow<'a, str>>,
     pub params: Option<Vec<FieldLike<'a>>>,
 }
@@ -523,6 +526,20 @@ pub struct Member<'a> {
     pub selection: Option<Cow<'a, str>>,
     pub values: Option<Cow<'a, str>>,
     pub limit_type: Option<MemberLimitType>,
+}
+
+impl<'a> ops::Deref for Member<'a> {
+    type Target = FieldLike<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl<'a> ops::DerefMut for Member<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for Type<'a> {

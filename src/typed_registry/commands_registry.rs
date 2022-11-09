@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, ops};
 
 use roxmltree::Node;
 
@@ -30,12 +30,40 @@ pub struct Proto<'a> {
     pub base: FieldLike<'a>,
 }
 
+impl<'a> ops::Deref for Proto<'a> {
+    type Target = FieldLike<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl<'a> ops::DerefMut for Proto<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct CommandParam<'a> {
     pub base: FieldLike<'a>,
     pub valid_structs: Option<Vec<Cow<'a, str>>>,
     pub stride: Option<Cow<'a, str>>,
+}
+
+impl<'a> ops::Deref for CommandParam<'a> {
+    type Target = FieldLike<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl<'a> ops::DerefMut for CommandParam<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

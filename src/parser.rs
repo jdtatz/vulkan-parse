@@ -716,7 +716,7 @@ peg::parser! {
           = "typedef" ty_name:type_specifier() ptr:"*"? "(" vkapi_ptr_macro() "*" name:name_tag() ")" "(" params:(
             "void" ")" ";" { None }
             / params:(typed_tag(<identifier()>) ** ",") ")" ";" { Some(params) }
-          ) { FnPtrType { name_and_return: FieldLike { pointer_kind: ptr.map(|()| PointerKind::Single), ..FieldLike::default_new(name, ty_name) }, params, requires: requires_attr.map(Cow::Borrowed) } }
+          ) { FnPtrType { name, return_type_name: ty_name, return_type_pointer_kind: ptr.map(|()| PointerKind::Single), params, requires: requires_attr.map(Cow::Borrowed) } }
   }
 }
 
@@ -991,15 +991,15 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FnPtrType<'a> {
     fn to_tokens(&'s self, tokens: &mut Vec<VkXMLToken<'s>>) {
         tokens.push(VkXMLToken::C(Token::TypeDef));
         tokens.push(VkXMLToken::C(Token::Identifier(
-            self.name_and_return.type_name.as_identifier(),
+            self.return_type_name.as_identifier(),
         )));
-        pointer_kind_tokens(&self.name_and_return.pointer_kind, tokens);
+        pointer_kind_tokens(&self.return_type_pointer_kind, tokens);
         tokens.push(VkXMLToken::C(Token::LParen));
         tokens.push(VkXMLToken::C(Token::Identifier("VKAPI_PTR")));
         tokens.push(VkXMLToken::C(Token::MulStar));
         tokens.push(VkXMLToken::TextTag {
             name: Cow::Borrowed("name"),
-            text: Cow::Borrowed(&self.name_and_return.name),
+            text: Cow::Borrowed(&self.name),
         });
         tokens.push(VkXMLToken::C(Token::RParen));
         tokens.push(VkXMLToken::C(Token::LParen));
