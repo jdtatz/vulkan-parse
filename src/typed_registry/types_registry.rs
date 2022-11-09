@@ -279,6 +279,22 @@ impl<'a> FieldLike<'a> {
             comment: None,
         }
     }
+
+    #[must_use]
+    pub fn array_shape(&self) -> Option<&[ArrayLength<'a>]> {
+        match &self.sizing {
+            Some(FieldLikeSizing::ArrayShape(shape)) => Some(shape.as_slice()),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn bitfield_size(&self) -> Option<NonZeroU8> {
+        match self.sizing {
+            Some(FieldLikeSizing::BitfieldSize(n)) => Some(n),
+            _ => None,
+        }
+    }
 }
 
 /// <type>
