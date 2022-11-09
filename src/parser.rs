@@ -226,9 +226,9 @@ fn wrap_fn_call<'a>(f: Expression<'a>, args: Vec<Expression<'a>>) -> Expression<
 //     Expression::Comma(Box::new(head), Box::new(tail))
 // }
 
-impl<'a> Into<Token<'static>> for UnaryOp<'a> {
-    fn into(self) -> Token<'static> {
-        match self {
+impl<'a> From<UnaryOp<'a>> for Token<'static> {
+    fn from(val: UnaryOp) -> Self {
+        match val {
             UnaryOp::Address => Token::Ampersand,
             UnaryOp::Indirection => Token::MulStar,
             UnaryOp::Positive => Token::Plus,
@@ -242,9 +242,9 @@ impl<'a> Into<Token<'static>> for UnaryOp<'a> {
     }
 }
 
-impl Into<Token<'static>> for BinaryOp {
-    fn into(self) -> Token<'static> {
-        match self {
+impl From<BinaryOp> for Token<'static> {
+    fn from(val: BinaryOp) -> Self {
+        match val {
             BinaryOp::Addition => Token::Plus,
             BinaryOp::Subtraction => Token::Minus,
             BinaryOp::Multiplication => Token::MulStar,
@@ -261,9 +261,9 @@ impl Into<Token<'static>> for BinaryOp {
     }
 }
 
-impl Into<Token<'static>> for ComparisionOp {
-    fn into(self) -> Token<'static> {
-        match self {
+impl From<ComparisionOp> for Token<'static> {
+    fn from(val: ComparisionOp) -> Self {
+        match val {
             ComparisionOp::LT => Token::LessThan,
             ComparisionOp::LTE => Token::LessThanEqual,
             ComparisionOp::Eq => Token::Equal,
@@ -274,9 +274,9 @@ impl Into<Token<'static>> for ComparisionOp {
     }
 }
 
-impl Into<Token<'static>> for MemberAccess {
-    fn into(self) -> Token<'static> {
-        match self {
+impl From<MemberAccess> for Token<'static> {
+    fn from(val: MemberAccess) -> Self {
+        match val {
             MemberAccess::Direct => Token::Dot,
             MemberAccess::Pointer => Token::Point,
         }
@@ -767,7 +767,7 @@ impl<'s, 'a: 's> TryFrom<&'s [Token<'a>]> for Expression<'a> {
 
 pub trait IntoVkXMLTokens<'t> {
     fn to_tokens(&'t self, tokens: &mut Vec<VkXMLToken<'t>>);
-    fn into_tokens(&'t self) -> Vec<VkXMLToken<'t>> {
+    fn to_tokens_vector(&'t self) -> Vec<VkXMLToken<'t>> {
         let mut tokens = Vec::with_capacity(32);
         self.to_tokens(&mut tokens);
         tokens
@@ -1041,6 +1041,6 @@ mod tests {
                 )),
                 Box::new(Expression::Constant(Constant::Integer(0xFFF)))
             )
-        )
+        );
     }
 }

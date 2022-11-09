@@ -38,7 +38,7 @@ const UNORDERED_ATTRS: &[&str] = &["queues", "cmdbufferlevel", "tasks"];
 fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
     let standard_xml = standard_xml.replace("__IOSurface*", "<type>__IOSurface</type>*");
     let standard_doc = Document::parse(&standard_xml).unwrap();
-    let roundtrip_doc = Document::parse(&roundtrip_xml).unwrap();
+    let roundtrip_doc = Document::parse(roundtrip_xml).unwrap();
 
     // ignore comment nodes and empty text nodes
     let node_filter =
