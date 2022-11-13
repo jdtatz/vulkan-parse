@@ -54,7 +54,7 @@ pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool) -> ResultIte
 }
 
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum Constant {
     Char(u8),
     Integer(u64),
@@ -149,7 +149,7 @@ impl TokenExtras {
 }
 
 #[derive(Logos, Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[logos(extras = TokenExtras)]
 #[logos(subpattern decimal = r"[1-9][0-9]*")]
 #[logos(subpattern hex = r"[0-9a-fA-F]+")]

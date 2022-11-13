@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     fmt,
     num::{NonZeroU32, NonZeroU8},
     ops::Deref,
@@ -14,7 +13,7 @@ use crate::{
 
 // C Type Decleration types
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum TypeQualifer {
     Const,
@@ -23,7 +22,7 @@ pub enum TypeQualifer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum TypeSpecifier<'a> {
     Void,
@@ -73,7 +72,7 @@ impl<'a> TypeSpecifier<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum TypeName<'a> {
     Specifier(TypeSpecifier<'a>),
@@ -97,14 +96,14 @@ enum TypeSpecifierOrQual<'a> {
 // C Expression types
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum FixOrder {
     Prefix,
     Postfix,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComparisionOp {
     LT,
@@ -116,7 +115,7 @@ pub enum ComparisionOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum UnaryOp<'a> {
     Address,
@@ -131,7 +130,7 @@ pub enum UnaryOp<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum BinaryOp {
     Addition,
     Subtraction,
@@ -148,7 +147,7 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum MemberAccess {
     /// '.'
     Direct,
@@ -157,7 +156,7 @@ pub enum MemberAccess {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum Expression<'a> {
     Identifier(&'a str),
     Constant(Constant),
@@ -388,9 +387,9 @@ pub enum VkXMLToken<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VkXMLTokens<'s, 'a>(pub Cow<'s, [VkXMLToken<'a>]>);
+pub struct VkXMLTokens<'a>(pub Vec<VkXMLToken<'a>>);
 
-impl<'s, 'a> Deref for VkXMLTokens<'s, 'a> {
+impl<'a> Deref for VkXMLTokens<'a> {
     type Target = [VkXMLToken<'a>];
 
     fn deref(&self) -> &Self::Target {
@@ -398,23 +397,23 @@ impl<'s, 'a> Deref for VkXMLTokens<'s, 'a> {
     }
 }
 
-impl<'s, 'a: 's> FromIterator<VkXMLToken<'a>> for VkXMLTokens<'s, 'a> {
+impl<'a> FromIterator<VkXMLToken<'a>> for VkXMLTokens<'a> {
     fn from_iter<T: IntoIterator<Item = VkXMLToken<'a>>>(iter: T) -> Self {
-        VkXMLTokens(Cow::Owned(iter.into_iter().collect()))
+        VkXMLTokens(iter.into_iter().collect())
     }
 }
 
-impl<'s, 'a: 's> FromIterator<Token<'a>> for VkXMLTokens<'s, 'a> {
+impl<'a> FromIterator<Token<'a>> for VkXMLTokens<'a> {
     fn from_iter<T: IntoIterator<Item = Token<'a>>>(iter: T) -> Self {
-        VkXMLTokens(Cow::Owned(iter.into_iter().map(VkXMLToken::C).collect()))
+        VkXMLTokens(iter.into_iter().map(VkXMLToken::C).collect())
     }
 }
 
-fn vk_tokenize<'s, 'a: 's, 'input>(
+fn vk_tokenize<'a, 'input: 'a>(
     node: roxmltree::Node<'a, 'input>,
     parsing_macros: bool,
     objc_compat: bool,
-) -> ParseResult<VkXMLTokens<'s, 'a>> {
+) -> ParseResult<VkXMLTokens<'a>> {
     node.children()
         .filter(|n| n.is_element() || n.is_text())
         .flat_map(|n| {
@@ -438,7 +437,7 @@ fn vk_tokenize<'s, 'a: 's, 'input>(
         .collect()
 }
 
-impl<'s, 'a> peg::Parse for VkXMLTokens<'s, 'a> {
+impl<'a> peg::Parse for VkXMLTokens<'a> {
     type PositionRepr = usize;
     fn start(&self) -> usize {
         0
@@ -453,24 +452,23 @@ impl<'s, 'a> peg::Parse for VkXMLTokens<'s, 'a> {
     }
 }
 
-pub type ParseError =
-    peg::error::ParseError<<VkXMLTokens<'static, 'static> as peg::Parse>::PositionRepr>;
+pub type ParseError = peg::error::ParseError<<VkXMLTokens<'static> as peg::Parse>::PositionRepr>;
 
-pub trait TryFromTokens<'s, 'a: 's>: 's + Sized {
+pub trait TryFromTokens<'a, 'input: 'a>: 'a + Sized {
     const PARSING_MACROS: bool;
     const OBJC_COMPAT: bool;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError>;
-    fn try_from_node(node: roxmltree::Node<'a, 's>) -> Result<Self, crate::ErrorKind> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError>;
+    fn try_from_node(node: roxmltree::Node<'a, 'input>) -> Result<Self, crate::ErrorKind> {
         let tokens = vk_tokenize(node, Self::PARSING_MACROS, Self::OBJC_COMPAT)?;
         Self::try_from_tokens(&tokens).map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
     }
 }
 
-impl<'input: 's, 's, 'a> peg::ParseElem<'input> for VkXMLTokens<'s, 'a> {
-    type Element = &'s VkXMLToken<'a>;
+impl<'peg, 'a: 'peg> peg::ParseElem<'peg> for VkXMLTokens<'a> {
+    type Element = &'peg VkXMLToken<'a>;
 
-    fn parse_elem(&'input self, pos: usize) -> peg::RuleResult<Self::Element> {
+    fn parse_elem(&'peg self, pos: usize) -> peg::RuleResult<Self::Element> {
         match self[pos..].first() {
             Some(c) => peg::RuleResult::Matched(pos + 1, c),
             None => peg::RuleResult::Failed,
@@ -478,7 +476,7 @@ impl<'input: 's, 's, 'a> peg::ParseElem<'input> for VkXMLTokens<'s, 'a> {
     }
 }
 
-impl<'s, 'a> peg::ParseLiteral for VkXMLTokens<'s, 'a> {
+impl<'s, 'a> peg::ParseLiteral for VkXMLTokens<'a> {
     fn parse_string_literal(&self, pos: usize, literal: &str) -> peg::RuleResult<()> {
         if let Some(VkXMLToken::C(tok)) = self.get(pos) {
             let literal_token = Token::from_literal(literal).unwrap_or_else(|| {
@@ -497,9 +495,9 @@ impl<'s, 'a> peg::ParseLiteral for VkXMLTokens<'s, 'a> {
     }
 }
 
-impl<'input, 's, 'a: 'input> peg::ParseSlice<'input> for VkXMLTokens<'s, 'a> {
-    type Slice = &'input [VkXMLToken<'a>];
-    fn parse_slice(&'input self, p1: usize, p2: usize) -> Self::Slice {
+impl<'peg, 'a: 'peg> peg::ParseSlice<'peg> for VkXMLTokens<'a> {
+    type Slice = &'peg [VkXMLToken<'a>];
+    fn parse_slice(&'peg self, p1: usize, p2: usize) -> Self::Slice {
         &self[p1..p2]
     }
 }
@@ -511,7 +509,7 @@ pub(crate) fn is_typedef_name(name: &str) -> bool {
 }
 
 peg::parser! {
-    pub grammar c_with_vk_ext<'s, 'a>() for VkXMLTokens<'s, 'a> {
+    pub grammar c_with_vk_ext<'a>() for VkXMLTokens<'a> {
         pub rule identifier() -> &'a str
           = quiet!{[VkXMLToken::C(Token::Identifier(i))] { (*i) }}
           / expected!("Identifier")
@@ -618,7 +616,7 @@ peg::parser! {
 
         // C vk.xml exts
         rule type_tag() -> &'a str
-          = quiet!{[VkXMLToken::TextTag { name, text } if *name == "type"] { text }}
+          = quiet!{[VkXMLToken::TextTag { name: "type", text }] { text }}
           / expected!("<type>...</type>")
 
         // handle pointer info, can be '*' or '**' or '* const*'
@@ -637,15 +635,15 @@ peg::parser! {
             }
 
         rule name_tag() -> &'a str
-         = quiet!{[VkXMLToken::TextTag { name, text } if *name == "name"] { text }}
+         = quiet!{[VkXMLToken::TextTag { name: "name", text }] { text }}
          / expected!("<name>...</name>")
 
         rule enum_tag() -> &'a str
-         = quiet!{[VkXMLToken::TextTag { name, text } if *name == "enum"] { text }}
+         = quiet!{[VkXMLToken::TextTag { name: "enum", text }] { text }}
          / expected!("<enum>...</enum>")
 
         rule comment_tag() -> &'a str
-         = quiet!{[VkXMLToken::TextTag { name, text } if *name == "comment"] { text }}
+         = quiet!{[VkXMLToken::TextTag { name: "comment", text }] { text }}
          / expected!("<comment>...</comment>")
 
         rule integer() -> u64
@@ -673,7 +671,7 @@ peg::parser! {
             = "struct" name:name_tag() ";" { BaseTypeType::Forward(name) }
             / "typedef" typed:typed_tag(<name_tag()>) ";" { BaseTypeType::TypeDef(typed) }
             // Workaround because it should be `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;` not `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
-            / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier(i)) if *i == "__IOSurface"] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
+            / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier("__IOSurface"))] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
                 pointer_kind: Some(PointerKind::Single),
                 is_const: false,
                 ..FieldLike::default_new(name, TypeSpecifier::Struct("__IOSurface"))
@@ -682,7 +680,7 @@ peg::parser! {
 
 
         rule define_macro()
-         = quiet!{"#" [VkXMLToken::C(Token::Identifier(i)) if *i == "define"]}
+         = quiet!{"#" [VkXMLToken::C(Token::Identifier("define"))]}
          / expected!("#define")
 
         /// <type category="define"> ... </type>
@@ -701,16 +699,16 @@ peg::parser! {
             } }
 
         rule vkapi_ptr_macro()
-            = quiet!{[VkXMLToken::C(Token::Identifier(id)) if *id == "VKAPI_PTR"]}
+            = quiet!{[VkXMLToken::C(Token::Identifier("VKAPI_PTR"))]}
             / expected!("VKAPI_PTR")
 
         /// <type category="funcptr"> ... </type>
         pub rule type_funcptr() -> FnPtrType<'a>
-          = "typedef" ty_name:type_specifier() ptr:"*"? "(" vkapi_ptr_macro() "*" name:name_tag() ")" "(" params:(
-            "void" ")" ";" { None }
-            / params:(typed_tag(<identifier()>) ** ",") ")" ";" { Some(params) }
-          ) { FnPtrType { name, return_type_name: ty_name, return_type_pointer_kind: ptr.map(|()| PointerKind::Single), params, requires: None } }
-  }
+          = "typedef" return_type_name:type_specifier() return_type_pointer_kind:pointer_kind()? "(" vkapi_ptr_macro() "*" name:name_tag() ")" "(" params:(
+            "void" { None }
+            / params:(typed_tag(<identifier()>) ** ",") { Some(params) }
+          ) ")" ";" { FnPtrType { name, return_type_name, return_type_pointer_kind, params, requires: None } }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -753,7 +751,7 @@ impl<'s, 'a: 's> TryFrom<&'s [Token<'a>]> for Expression<'a> {
     type Error = peg::error::ParseError<usize>;
 
     fn try_from(value: &'s [Token<'a>]) -> Result<Self, Self::Error> {
-        let c_toks = VkXMLTokens(value.iter().cloned().map(VkXMLToken::C).collect());
+        let c_toks = value.iter().cloned().collect();
         c_with_vk_ext::expr(&c_toks)
     }
 }
@@ -813,11 +811,11 @@ fn typed_tag_tokens<'s, 'a: 's>(
     }
 }
 
-impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FieldLike<'a> {
+impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for FieldLike<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
         c_with_vk_ext::field_like(tokens)
     }
 }
@@ -861,11 +859,11 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FieldLike<'a> {
     }
 }
 
-impl<'s, 'a: 's> TryFromTokens<'s, 'a> for BaseTypeType<'a> {
+impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for BaseTypeType<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = true;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_basetype(tokens)
     }
 }
@@ -898,11 +896,11 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s BaseTypeType<'a> {
     }
 }
 
-impl<'s, 'a: 's> TryFromTokens<'s, 'a> for MacroDefine<'a> {
+impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for MacroDefine<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_define(tokens)
     }
 }
@@ -971,11 +969,11 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s MacroDefine<'a> {
     }
 }
 
-impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FnPtrType<'a> {
+impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for FnPtrType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_funcptr(tokens)
     }
 }
