@@ -502,15 +502,12 @@ impl<'a> IntoXMLElement for BitmaskType<'a> {
             has_bitvalues,
         } = self;
         element // TODO requires / bitvalues
-            .with_opt_attribute(
-                "bitvalues",
-                has_bitvalues.then(|| name.replace("Flags", "FlagBits")),
-            )
+            .with_opt_attribute("bitvalues", self.bitvalues())
             .write_inner_content_(|writer| {
                 writer.write_event(Event::Text(BytesText::new("typedef ")))?;
                 writer
                     .create_element2("type")
-                    .write_escaped_text(is_64bits.then_some("VkFlags64").unwrap_or("VkFlags"))?;
+                    .write_escaped_text(self.type_name())?;
                 writer.write_event(Event::Text(BytesText::new(" ")))?;
                 writer.create_element2("name").write_escaped_text(name)?;
                 writer.write_event(Event::Text(BytesText::new(";")))
@@ -831,7 +828,6 @@ impl<'a> IntoXMLElement for Command<'a> {
             error_codes,
             queues,
             cmd_buffer_level,
-            description,
             implicit_extern_sync_params,
             tasks,
             video_coding,
@@ -846,7 +842,6 @@ impl<'a> IntoXMLElement for Command<'a> {
             .with_opt_attribute("errorcodes", error_codes.as_deref().map(|ec| ec.join(",")))
             .with_opt_attribute("queues", queues.map(Seperated::<_, ','>))
             .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.map(Seperated::<_, ','>))
-            .with_opt_attribute("description", description.as_ref())
             .with_opt_attribute("tasks", tasks.map(Seperated::<_, ','>))
             .with_opt_attribute("videocoding", video_coding.as_ref())
             .with_opt_attribute("renderpass", renderpass.as_ref())
@@ -960,7 +955,7 @@ impl<'a> IntoXMLElement for Extension<'a> {
             .with_opt_attribute("sortorder", sort_order.as_ref())
             .with_opt_attribute("platform", platform.as_ref())
             .with_opt_attribute("provisional", provisional.as_ref())
-            .with_opt_attribute("specialuse", special_use.as_ref())
+            .with_opt_attribute("specialuse", special_use.as_deref().map(|d| d.join(",")))
             .with_opt_attribute("comment", comment.as_ref())
             .write_children(requires)
     }

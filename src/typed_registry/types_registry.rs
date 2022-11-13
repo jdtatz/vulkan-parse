@@ -186,7 +186,7 @@ impl<'a> TryFrom<&'a str> for ExternSyncField<'a> {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
-    Value,
+    True,
     Fields(Vec<ExternSyncField<'a>>),
 }
 
@@ -195,7 +195,7 @@ impl<'a> TryFrom<&'a str> for ExternSyncKind<'a> {
 
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         match s {
-            "true" => Ok(Self::Value),
+            "true" => Ok(Self::True),
             s => s
                 .split(',')
                 .map(ExternSyncField::try_from)
@@ -221,7 +221,7 @@ impl<'a> fmt::Display for ExternSyncField<'a> {
 impl<'a> fmt::Display for ExternSyncKind<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExternSyncKind::Value => write!(f, "true"),
+            ExternSyncKind::True => write!(f, "true"),
             ExternSyncKind::Fields(fs) => crate::fmt_write_interspersed(f, fs.iter(), ","),
         }
     }
@@ -232,7 +232,7 @@ impl<'a> fmt::Display for ExternSyncKind<'a> {
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
     #[strum(serialize = "true")]
-    Value,
+    True,
 }
 
 // TODO Bikeshed needed
@@ -253,12 +253,16 @@ pub struct FieldLike<'a> {
     pub pointer_kind: Option<PointerKind>,
     pub sizing: Option<FieldLikeSizing<'a>>,
     pub dynamic_shape: Option<DynamicShapeKind<'a>>,
+    /// denotes that the member should be externally synchronized when accessed by Vulkan
     pub extern_sync: Option<ExternSyncKind<'a>>,
+    /// whether this value can be omitted by providing NULL (for pointers), VK_NULL_HANDLE (for handles) or 0 (for bitmasks/values)
     pub optional: Option<OptionalKind>,
+    /// no automatic validity language should be generated
     pub no_auto_validity: Option<NoAutoValidityKind>,
     /// The field-like that paramertizes what type of vulkan handle this one is.
     /// => This field-like is a generic vulkan handle, and it is an error if `type_name` isn't `uint64_t`
     pub object_type: Option<Cow<'a, str>>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
@@ -327,7 +331,9 @@ pub enum Type<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct RequiresType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
+    /// name of another type definition required by this one
     pub requires: Option<Cow<'a, str>>,
 }
 
@@ -345,7 +351,9 @@ pub struct IncludeType<'a> {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct GuardedDefine<'a> {
     pub name: Cow<'a, str>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
+    /// name of another type definition required by this one
     pub requires: Option<Cow<'a, str>>,
     pub code: Vec<Token<'a>>,
 }
@@ -354,8 +362,11 @@ pub struct GuardedDefine<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct MacroDefine<'a> {
+    /// name of defined macro
     pub name: Cow<'a, str>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
+    /// name of another type or macro definition required by this one
     pub requires: Option<Cow<'a, str>>,
     pub deprecation_comment: Option<Cow<'a, str>>,
     pub is_disabled: bool,
@@ -404,11 +415,16 @@ impl<'a> MacroDefineValue<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum BaseTypeType<'a> {
+    /// Forward declaration of a struct
     Forward(Cow<'a, str>),
+    /// C typedef defining a type alias
     TypeDef(FieldLike<'a>),
     DefineGuarded {
+        /// C pre-processor tokens before the name tag
         pre: Vec<Token<'a>>,
+        /// Name of the type defined
         name: Cow<'a, str>,
+        /// C pre-processor tokens after the name tag
         post: Vec<Token<'a>>,
     },
 }
@@ -428,18 +444,38 @@ impl<'a> BaseTypeType<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct BitmaskType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
     pub is_64bits: bool,
     pub has_bitvalues: bool,
+}
+
+impl<'a> BitmaskType<'a> {
+    pub fn type_name(&self) -> &'static str {
+        if self.is_64bits {
+            "VkFlags64"
+        } else {
+            "VkFlags"
+        }
+    }
+
+    /// name of an enum definition that defines the valid values for parameters of this type
+    pub fn bitvalues(&self) -> Option<String> {
+        self.has_bitvalues
+            .then(|| self.name.replace("Flags", "FlagBits"))
+    }
 }
 
 /// <type category="handle">
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct HandleType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
     pub handle_kind: HandleKind,
+    /// name of VK_OBJECT_TYPE_* API enumerant which corresponds to this type.
     pub obj_type_enum: Cow<'a, str>,
+    /// Notes another handle type that acts as a parent object for this type.
     pub parent: Option<Cow<'a, str>>,
 }
 
@@ -456,6 +492,7 @@ pub enum HandleKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct EnumType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
 }
 
@@ -463,9 +500,11 @@ pub struct EnumType<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct FnPtrType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
     pub return_type_name: TypeSpecifier<'a>,
     pub return_type_pointer_kind: Option<PointerKind>,
+    /// name of another type definition required by this one
     pub requires: Option<Cow<'a, str>>,
     pub params: Option<Vec<FieldLike<'a>>>,
 }
@@ -474,12 +513,18 @@ pub struct FnPtrType<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
+    /// Notes that this struct is going to be filled in by the API, rather than an application filling it out and passing it to the API.
     pub returned_only: Option<bool>,
+    /// Lists parent structures which this structure may extend via the `pNext` chain of the parent.
     pub struct_extends: Option<Vec<Cow<'a, str>>>,
+    /// `pNext` can include multiple structures of this type.
     pub allow_duplicate: Option<bool>,
+    /// name of another type definition required by this one
     pub requires: Option<Cow<'a, str>>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
@@ -487,9 +532,12 @@ pub struct StructType<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct UnionType<'a> {
+    /// name of this type
     pub name: Cow<'a, str>,
     pub members: CommentendChildren<'a, Member<'a>>,
+    /// Notes that this union is going to be filled in by the API, rather than an application filling it out and passing it to the API.
     pub returned_only: Option<bool>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
@@ -510,9 +558,11 @@ pub enum MemberSelector {
 #[non_exhaustive]
 pub enum MemberLimitType {
     #[strum(serialize = "min")]
-    Min,
+    Minimum,
     #[strum(serialize = "max")]
-    Max,
+    Maximum,
+    #[strum(serialize = "pot")]
+    PowerOfTwo,
     #[strum(serialize = "exact")]
     Exact,
     #[strum(serialize = "bits")]
@@ -526,11 +576,11 @@ pub enum MemberLimitType {
     #[strum(serialize = "noauto")]
     NoAuto,
     #[strum(serialize = "min,pot")]
-    MinPot,
+    MinimumPowerOfTwo,
     #[strum(serialize = "max,pot")]
-    MaxPot,
+    MaximumPowerOfTwo,
     #[strum(serialize = "min,mul")]
-    MinMul,
+    MinimumMul,
 }
 
 /// <member>
@@ -538,9 +588,14 @@ pub enum MemberLimitType {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Member<'a> {
     pub base: FieldLike<'a>,
+    /// for a union member, identifies a separate enum member that selects which of the union's members are valid
     pub selector: Option<MemberSelector>,
+    /// for a member of a union, identifies an enum value indicating the member is valid
     pub selection: Option<Cow<'a, str>>,
+    /// list of legal values, usually used only for `sType` enums
     pub values: Option<Cow<'a, str>>,
+    /// Specifies the type of a device limit.
+    /// only applicable for members of VkPhysicalDeviceProperties and VkPhysicalDeviceProperties2, their substructures, and extensions.
     pub limit_type: Option<MemberLimitType>,
 }
 

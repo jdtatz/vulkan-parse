@@ -5,25 +5,36 @@ use roxmltree::Node;
 use super::FieldLike;
 use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
 
+
+/// Structured definition of a single API command (function)
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Command<'a> {
+    /// C function prototype, including the return type
     pub proto: Proto<'a>,
+    /// function parameters
     pub params: Vec<CommandParam<'a>>,
-
+    /// possible successful return codes from the command
     pub success_codes: Option<SuccessCodes<'a>>,
+    /// possible error return codes from the command
     pub error_codes: Option<Vec<Cow<'a, str>>>,
-
+    /// the command queues this command can be placed on
     pub queues: Option<enumflags2::BitFlags<Queue>>,
+    /// the command buffer levels that this command can be called by
     pub cmd_buffer_level: Option<enumflags2::BitFlags<CommandBufferLevel>>,
-    pub description: Option<Cow<'a, str>>,
+    /// spec-language descriptions of objects that are not parameters of the command, but are related to them and also require external synchronization
     pub implicit_extern_sync_params: Option<ImplicitExternSyncParams<'a>>,
+    /// the tasks this command performs, as described in the “Queue Operation” section of the Vulkan Specification
     pub tasks: Option<enumflags2::BitFlags<Task>>,
-    pub video_coding: Option<VideoCoding>,
-    pub renderpass: Option<Renderpass>,
+    /// whether the command can be issued only inside a video coding scope, only outside a video coding scope, or both. The default is outside
+    pub video_coding: Option<ScopeValidity>,
+    /// whether the command can be issued only inside a render pass, only outside a render pass, or both.
+    pub renderpass: Option<ScopeValidity>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
+/// C function prototype of a command, up to the function name and return type but not including function parameters
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Proto<'a> {
@@ -48,7 +59,14 @@ impl<'a> ops::DerefMut for Proto<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct CommandParam<'a> {
     pub base: FieldLike<'a>,
+    /// only applicable for parameters which are pointers to
+    /// VkBaseInStructure or VkBaseOutStructure types, used as abstract
+    /// placeholders. Specifies a list of structures which
+    /// may be passed in place of the parameter, or anywhere in the pNext
+    /// chain of the parameter.
     pub valid_structs: Option<Vec<Cow<'a, str>>>,
+    /// name of param containing the byte stride between consecutive elements in this array.
+    /// Is assumed tightly packed if omitted.
     pub stride: Option<Cow<'a, str>>,
 }
 
@@ -72,6 +90,7 @@ pub struct ImplicitExternSyncParam<'a> {
     pub description: Cow<'a, str>,
 }
 
+/// spec-language descriptions of objects that are not parameters of the command, but are related to them and also require external synchronization
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct ImplicitExternSyncParams<'a> {
@@ -134,18 +153,7 @@ impl<'s, 'a: 's> IntoIterator for &'s SuccessCodes<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum Renderpass {
-    #[strum(serialize = "inside")]
-    Inside,
-    #[strum(serialize = "outside")]
-    Outside,
-    #[strum(serialize = "both")]
-    Both,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum VideoCoding {
+pub enum ScopeValidity {
     #[strum(serialize = "inside")]
     Inside,
     #[strum(serialize = "outside")]
@@ -248,7 +256,6 @@ impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
                 error_codes: try_attribute_sep::<_, ','>(node, "errorcodes")?,
                 queues: try_attribute_sep::<_, ','>(node, "queues")?,
                 cmd_buffer_level: try_attribute_sep::<_, ','>(node, "cmdbufferlevel")?,
-                description: try_attribute(node, "description")?,
                 tasks: try_attribute_sep::<_, ','>(node, "tasks")?,
                 video_coding: try_attribute(node, "videocoding")?,
                 renderpass: try_attribute(node, "renderpass")?,

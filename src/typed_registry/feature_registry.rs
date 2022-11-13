@@ -18,17 +18,24 @@ pub enum FeatureApi {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Feature<'a> {
+    /// version C preprocessor name
     pub name: Cow<'a, str>,
+    /// API tag used internally, not necessarily an actual API name
     pub api: FeatureApi,
+    /// version number
     pub number: SemVarVersion,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
+    /// features to require in this version
     pub requires: Vec<Require<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Require<'a> {
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
+    /// API feature name
     pub feature: Option<StdVersion>,
     pub extension: Option<Cow<'a, str>>,
     pub values: CommentendChildren<'a, RequireValue<'a>>,
@@ -39,10 +46,12 @@ pub struct Require<'a> {
 pub enum RequireValue<'a> {
     Type {
         name: Cow<'a, str>,
+        /// descriptive text with no semantic meaning
         comment: Option<Cow<'a, str>>,
     },
     Command {
         name: Cow<'a, str>,
+        /// descriptive text with no semantic meaning
         comment: Option<Cow<'a, str>>,
     },
     Enum(RequireEnum<'a>),
@@ -52,9 +61,13 @@ pub enum RequireValue<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct RequireEnum<'a> {
     pub name: Option<Cow<'a, str>>,
+    /// name of a separately defined enumerated type to which the extension enumerant is added
     pub extends: Option<Cow<'a, str>>,
+    /// If `None` then it's a Refrence Enum, otherwise it's an Exstension Enum
     pub value: Option<RequireValueEnum<'a>>,
+    /// preprocessor protection symbol for the enum 
     pub protect: Option<Cow<'a, str>>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
@@ -73,8 +86,11 @@ pub enum RequireValueEnum<'a> {
     Offset {
         // Required for <feature><require>, but optional in <extension><require>
         // extnumber: u32,
+        /// extension number. The extension number in turn specifies the starting value of a block (range) of values reserved for enumerants 
         extnumber: Option<u32>,
+        /// the offset within an extension block
         offset: u32,
+        /// if present, the calculated enumerant value will be negative, instead of positive. Negative enumerant values are normally used only for Vulkan error codes
         direction: Option<OffsetDirection>,
     },
     Bitpos(u8),

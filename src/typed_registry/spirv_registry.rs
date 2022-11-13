@@ -64,10 +64,12 @@ impl<'a> fmt::Display for EnableRequires<'a> {
     }
 }
 
+/// If the API version is supported, the SPIR-V extension or capability is enabled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct VersionEnable(pub StdVersion);
 
+/// If the API extension is supported and enabled, the SPIR-V extension or capability is enabled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct ExtensionEnable<'a>(pub Cow<'a, str>);
@@ -75,18 +77,26 @@ pub struct ExtensionEnable<'a>(pub Cow<'a, str>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructEnable<'a> {
+    /// API feature structure name
     pub name: Cow<'a, str>,
+    /// API feature name, matching the name of a member of the `name` structure
     pub feature: Cow<'a, str>,
+    /// list of API feature version numbers and/or extension names.
     pub requires: EnableRequires<'a>,
+    /// Another API feature name which is an alias of `feature`. Needed when the same feature is provided by two different API versions or extensions.
     pub alias: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct PropertyEnable<'a> {
+    /// API property structure name
     pub name: Cow<'a, str>,
+    /// API property name, matching the name of a member of the `name` structure
     pub member: Cow<'a, str>,
+    /// A value, matching an API enum value. If the property is a bitfield, `value` must be a bitmask value belonging to the `member` bitfield type. Otherwise, `value` must be an enum name defined for the `member` enumeration type.
     pub value: Expression<'a>,
+    /// list of API feature version numbers and/or extension names.
     pub requires: EnableRequires<'a>,
 }
 

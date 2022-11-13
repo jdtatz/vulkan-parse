@@ -14,8 +14,11 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Enums<'a> {
+    /// name of the corresponding <type> associated with this group
     pub name: Cow<'a, str>,
+    /// bit width of the enum value type. If omitted, a default value of 32 is used.
     pub bit_width: Option<NonZeroU8>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
     pub values: EnumsValues<'a>,
 }
@@ -23,39 +26,52 @@ pub struct Enums<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum EnumsValues<'a> {
-    /// no type attribute
+    // no type attribute
+    /// Hardcoded constants, not an enumerated type
     Constants(CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>),
-    /// type="enum"
+    // type="enum"
+    /// An enum where each value is distinct
     Enum(
         CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>,
         Option<UnusedEnum<'a>>,
     ),
-    /// type="bitmask"
+    // type="bitmask"
+    /// An enum where the values constitute a bitmask
     Bitmask(CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct ConstantEnum<'a> {
+    /// Enumerant name, a legal C preprocessor token name
     pub name: Cow<'a, str>,
+    /// a C scalar type corresponding to the type of `value`, although only uint32_t, uint64_t, and float are currently meaningful
     pub type_name: Cow<'a, str>,
+    /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
     pub value: Expression<'a>,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct ValueEnum<'a> {
+    /// Enumerant name, a legal C preprocessor token name
     pub name: Cow<'a, str>,
+    /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
     pub value: i64,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct BitPosEnum<'a> {
+    /// Enumerant name, a legal C preprocessor token name
     pub name: Cow<'a, str>,
+    /// literal integer bit position in a bitmask
     pub bitpos: u8,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 
@@ -83,11 +99,14 @@ impl<'a> BitmaskEnum<'a> {
     }
 }
 
-/// <enums type="enum"> ... <unused /> </<enums>
+// <enums type="enum"> ... <unused /> </<enums>
+/// defines a range of enumerants not currently being used
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct UnusedEnum<'a> {
+    /// defines a single unused enumerant
     pub start: i64,
+    /// descriptive text with no semantic meaning
     pub comment: Option<Cow<'a, str>>,
 }
 

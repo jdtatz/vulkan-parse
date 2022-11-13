@@ -57,8 +57,11 @@ pub enum Items<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Platform<'a> {
+    /// name of the platform, used as part of extension names
     pub name: Cow<'a, str>,
+    /// preprocessor symbol to include platform headers from <vulkan.h>
     pub protect: Cow<'a, str>,
+    /// platform description
     pub comment: Option<Cow<'a, str>>,
 }
 
@@ -66,7 +69,9 @@ pub struct Platform<'a> {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Tag<'a> {
     pub name: Cow<'a, str>,
+    /// name of the author (usually a company or project name)
     pub author: Cow<'a, str>,
+    /// contact responsible for the tag (name and contact information)
     pub contact: Cow<'a, str>,
 }
 
