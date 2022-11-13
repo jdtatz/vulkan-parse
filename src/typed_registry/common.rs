@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     fmt,
     num::ParseIntError,
     ops::{Deref, DerefMut},
@@ -12,7 +11,7 @@ use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct Comment<'a>(pub Cow<'a, str>);
+pub struct Comment<'a>(pub &'a str);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -74,9 +73,9 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Alias<'a> {
-    pub name: Cow<'a, str>,
-    pub alias: Cow<'a, str>,
-    pub comment: Option<Cow<'a, str>>,
+    pub name: &'a str,
+    pub alias: &'a str,
+    pub comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,7 +226,7 @@ impl<'a, 'input: 'a, T: 'a + Parse<'a, 'input>> ParseElements<'a, 'input>
 impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("comment") {
-            Ok(Some(Comment(Cow::Borrowed(node.text().unwrap_or("")))))
+            Ok(Some(Comment(node.text().unwrap_or(""))))
         } else {
             Ok(None)
         }

@@ -1,10 +1,9 @@
-use std::{borrow::Cow, ops};
+use std::ops;
 
 use roxmltree::Node;
 
 use super::FieldLike;
 use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
-
 
 /// Structured definition of a single API command (function)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +16,7 @@ pub struct Command<'a> {
     /// possible successful return codes from the command
     pub success_codes: Option<SuccessCodes<'a>>,
     /// possible error return codes from the command
-    pub error_codes: Option<Vec<Cow<'a, str>>>,
+    pub error_codes: Option<Vec<&'a str>>,
     /// the command queues this command can be placed on
     pub queues: Option<enumflags2::BitFlags<Queue>>,
     /// the command buffer levels that this command can be called by
@@ -31,7 +30,7 @@ pub struct Command<'a> {
     /// whether the command can be issued only inside a render pass, only outside a render pass, or both.
     pub renderpass: Option<ScopeValidity>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
 }
 
 /// C function prototype of a command, up to the function name and return type but not including function parameters
@@ -64,10 +63,10 @@ pub struct CommandParam<'a> {
     /// placeholders. Specifies a list of structures which
     /// may be passed in place of the parameter, or anywhere in the pNext
     /// chain of the parameter.
-    pub valid_structs: Option<Vec<Cow<'a, str>>>,
+    pub valid_structs: Option<Vec<&'a str>>,
     /// name of param containing the byte stride between consecutive elements in this array.
     /// Is assumed tightly packed if omitted.
-    pub stride: Option<Cow<'a, str>>,
+    pub stride: Option<&'a str>,
 }
 
 impl<'a> ops::Deref for CommandParam<'a> {
@@ -87,7 +86,7 @@ impl<'a> ops::DerefMut for CommandParam<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct ImplicitExternSyncParam<'a> {
-    pub description: Cow<'a, str>,
+    pub description: &'a str,
 }
 
 /// spec-language descriptions of objects that are not parameters of the command, but are related to them and also require external synchronization
@@ -125,7 +124,7 @@ pub enum Queue {
 pub enum SuccessCodes<'a> {
     /// `successcodes="VK_SUCCESS"`
     DefaultSuccess,
-    Codes(Vec<Cow<'a, str>>),
+    Codes(Vec<&'a str>),
 }
 
 impl<'a> From<&'a str> for SuccessCodes<'a> {
@@ -133,19 +132,19 @@ impl<'a> From<&'a str> for SuccessCodes<'a> {
         if s == "VK_SUCCESS" {
             Self::DefaultSuccess
         } else {
-            Self::Codes(s.split(',').map(Cow::Borrowed).collect())
+            Self::Codes(s.split(',').collect())
         }
     }
 }
 
 impl<'s, 'a: 's> IntoIterator for &'s SuccessCodes<'a> {
-    type Item = &'s Cow<'a, str>;
+    type Item = &'s &'a str;
 
-    type IntoIter = <&'s [Cow<'a, str>] as IntoIterator>::IntoIter;
+    type IntoIter = <&'s [&'a str] as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            SuccessCodes::DefaultSuccess => [Cow::Borrowed("VK_SUCCESS")].iter(),
+            SuccessCodes::DefaultSuccess => ["VK_SUCCESS"].iter(),
             SuccessCodes::Codes(codes) => codes.iter(),
         }
     }
@@ -218,7 +217,7 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParam<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("param") {
             Ok(Some(Self {
-                description: Cow::Borrowed(node.text().unwrap_or("")),
+                description: node.text().unwrap_or(""),
             }))
         } else {
             Ok(None)

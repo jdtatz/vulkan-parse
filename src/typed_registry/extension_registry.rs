@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
 use roxmltree::Node;
 
@@ -31,7 +31,7 @@ pub enum ExtensionSupport {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExtensionPromotion<'a> {
     Core(StdVersion),
-    Extension(Cow<'a, str>),
+    Extension(&'a str),
 }
 
 impl<'a> From<&'a str> for ExtensionPromotion<'a> {
@@ -39,7 +39,7 @@ impl<'a> From<&'a str> for ExtensionPromotion<'a> {
         if let Ok(ver) = s.parse() {
             Self::Core(ver)
         } else {
-            Self::Extension(Cow::Borrowed(s))
+            Self::Extension(s)
         }
     }
 }
@@ -57,7 +57,7 @@ impl<'a> fmt::Display for ExtensionPromotion<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Extension<'a> {
     /// extension name string
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// extension number (positive integer, should be unique)
     pub number: u32,
     pub kind: Option<ExtensionKind>,
@@ -66,14 +66,14 @@ pub struct Extension<'a> {
     /// core version of Vulkan required by the extension
     pub requires_core: Option<SemVarVersion>,
     /// list of extension names required by this
-    pub requires_depencies: Option<Vec<Cow<'a, str>>>,
+    pub requires_depencies: Option<Vec<&'a str>>,
 
     // Only missing for VK_RESERVED_do_not_use_94 & VK_RESERVED_do_not_use_146
     /// name of the author (usually a company or project name)
-    pub author: Option<Cow<'a, str>>,
+    pub author: Option<&'a str>,
     // Only missing for VK_KHR_mir_surface, VK_RESERVED_do_not_use_94, & VK_RESERVED_do_not_use_146
     /// contact responsible for the tag (name and contact information)
-    pub contact: Option<Cow<'a, str>>,
+    pub contact: Option<&'a str>,
     /// Vulkan version or a name of an extension that this extension was promoted to
     pub promoted_to: Option<ExtensionPromotion<'a>>,
     /// Vulkan version or a name of an extension that deprecates this extension
@@ -83,13 +83,13 @@ pub struct Extension<'a> {
     /// order relative to other extensions, default 0
     pub sort_order: Option<i32>,
     /// should be one of the platform names defined in the <platform> tag.
-    pub platform: Option<Cow<'a, str>>,
+    pub platform: Option<&'a str>,
     /// is this extension released provisionally
     pub provisional: Option<bool>,
     /// List of the extension's special purposes
-    pub special_use: Option<Vec<Cow<'a, str>>>,
+    pub special_use: Option<Vec<&'a str>>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
     pub requires: Vec<Require<'a>>,
 }
 
@@ -97,11 +97,11 @@ pub struct Extension<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct PseudoExtension<'a> {
     /// extension name string
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// profile name(s) supporting this extension, e.g. 'vulkan' or 'disabled' to never generate output.
     pub supported: ExtensionSupport,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
     pub requires: Vec<Require<'a>>,
 }
 

@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    num::{NonZeroU8, ParseIntError},
-};
+use std::num::{NonZeroU8, ParseIntError};
 
 use roxmltree::Node;
 
@@ -15,11 +12,11 @@ use crate::{
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Enums<'a> {
     /// name of the corresponding <type> associated with this group
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// bit width of the enum value type. If omitted, a default value of 32 is used.
     pub bit_width: Option<NonZeroU8>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
     pub values: EnumsValues<'a>,
 }
 
@@ -44,35 +41,35 @@ pub enum EnumsValues<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct ConstantEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// a C scalar type corresponding to the type of `value`, although only uint32_t, uint64_t, and float are currently meaningful
-    pub type_name: Cow<'a, str>,
+    pub type_name: &'a str,
     /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
     pub value: Expression<'a>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct ValueEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
     pub value: i64,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct BitPosEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// literal integer bit position in a bitmask
     pub bitpos: u8,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,14 +81,14 @@ pub enum BitmaskEnum<'a> {
 
 impl<'a> BitmaskEnum<'a> {
     #[must_use]
-    pub fn name(&self) -> &Cow<'a, str> {
+    pub fn name(&self) -> &&'a str {
         match self {
             BitmaskEnum::Value(v) => &v.name,
             BitmaskEnum::BitPos(b) => &b.name,
         }
     }
     #[must_use]
-    pub fn comment(&self) -> Option<&Cow<'a, str>> {
+    pub fn comment(&self) -> Option<&&'a str> {
         match self {
             BitmaskEnum::Value(v) => v.comment.as_ref(),
             BitmaskEnum::BitPos(b) => b.comment.as_ref(),
@@ -107,7 +104,7 @@ pub struct UnusedEnum<'a> {
     /// defines a single unused enumerant
     pub start: i64,
     /// descriptive text with no semantic meaning
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
 }
 
 impl<'a, 'input> Parse<'a, 'input> for Enums<'a> {

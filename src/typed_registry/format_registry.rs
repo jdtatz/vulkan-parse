@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
+use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use roxmltree::Node;
 
@@ -9,9 +9,9 @@ use crate::{attribute, attribute_fs, try_attribute, try_attribute_fs, Parse, Par
 
 pub struct Format<'a> {
     /// format name
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// format class. A string whose value is shared by a group of formats which may be compatible, and is a textual description of something important that group has in common
-    pub class: Cow<'a, str>,
+    pub class: &'a str,
     /// texel block size, in bytes, of the format
     pub block_size: NonZeroU8,
     /// number of texels in a texel block of the format
@@ -21,7 +21,7 @@ pub struct Format<'a> {
     /// number of bits into which the format is packed
     pub packed: Option<NonZeroU8>,
     /// general texture compression scheme
-    pub compressed: Option<Cow<'a, str>>,
+    pub compressed: Option<&'a str>,
     /// The format's {YCbCr} encoding. Marks if {YCbCr} samplers are required by default when using this format
     pub chroma: Option<FormatChroma>,
     pub children: Vec<FormatChild<'a>>,
@@ -50,12 +50,12 @@ pub enum FormatChild<'a> {
         /// relative height of this plane. A value of k means that this plane is 1/k the height of the overall format.
         height_divisor: NonZeroU8,
         /// single-plane format that this plane is compatible with
-        compatible: Cow<'a, str>,
+        compatible: &'a str,
     },
 
     SpirvImageFormat {
         /// name of the SPIR-V image format
-        name: Cow<'a, str>,
+        name: &'a str,
     },
 }
 

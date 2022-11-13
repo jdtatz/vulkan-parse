@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use roxmltree::Node;
 
 use super::{
@@ -23,34 +21,34 @@ pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
 pub enum Items<'a> {
     Platforms {
         platforms: Vec<Platform<'a>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
     Tags {
         tags: Vec<Tag<'a>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
     Types {
         types: CommentendChildren<'a, Type<'a>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
     Enums(Enums<'a>),
     Commands {
         commands: CommentendChildren<'a, DefinitionOrAlias<'a, Command<'a>>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
     Features(Feature<'a>),
     Extensions {
         extensions: Vec<WrappedExtension<'a>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
     Formats(Vec<Format<'a>>),
     SpirvExtensions {
         extensions: Vec<SpirvExtension<'a>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
     SpirvCapabilities {
         capabilities: Vec<SpirvCapability<'a>>,
-        comment: Option<Cow<'a, str>>,
+        comment: Option<&'a str>,
     },
 }
 
@@ -58,21 +56,21 @@ pub enum Items<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Platform<'a> {
     /// name of the platform, used as part of extension names
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// preprocessor symbol to include platform headers from <vulkan.h>
-    pub protect: Cow<'a, str>,
+    pub protect: &'a str,
     /// platform description
-    pub comment: Option<Cow<'a, str>>,
+    pub comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Tag<'a> {
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// name of the author (usually a company or project name)
-    pub author: Cow<'a, str>,
+    pub author: &'a str,
     /// contact responsible for the tag (name and contact information)
-    pub contact: Cow<'a, str>,
+    pub contact: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

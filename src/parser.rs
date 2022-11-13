@@ -33,15 +33,15 @@ pub enum TypeSpecifier<'a> {
     Long,
     Float,
     Double,
-    Struct(Cow<'a, str>),
-    Union(Cow<'a, str>),
-    Enum(Cow<'a, str>),
-    TypedefName(Cow<'a, str>),
+    Struct(&'a str),
+    Union(&'a str),
+    Enum(&'a str),
+    TypedefName(&'a str),
 }
 
 impl<'a> TypeSpecifier<'a> {
-    fn from_plain(ident: Cow<'a, str>, is_struct: bool) -> Self {
-        match &*ident {
+    fn from_plain(ident: &'a str, is_struct: bool) -> Self {
+        match ident {
             "void" => TypeSpecifier::Void,
             "char" => TypeSpecifier::Char,
             "short" => TypeSpecifier::Short,
@@ -83,7 +83,7 @@ pub enum TypeName<'a> {
     Array(Box<TypeName<'a>>, Option<NonZeroU32>),
     Function {
         return_ty: Box<TypeName<'a>>,
-        name: Cow<'a, str>,
+        name: &'a str,
         arg_tys: Vec<TypeName<'a>>,
     },
     Qualified(TypeQualifer, Box<TypeName<'a>>),
@@ -159,9 +159,9 @@ pub enum MemberAccess {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum Expression<'a> {
-    Identifier(Cow<'a, str>),
+    Identifier(&'a str),
     Constant(Constant),
-    Literal(Cow<'a, str>),
+    Literal(&'a str),
     SizeOf(TypeName<'a>),
     Unary(UnaryOp<'a>, Box<Expression<'a>>),
     Binary(BinaryOp, Box<Expression<'a>>, Box<Expression<'a>>),
@@ -174,7 +174,7 @@ pub enum Expression<'a> {
     ),
     FunctionCall(Box<Expression<'a>>, Vec<Expression<'a>>),
     Comma(Box<Expression<'a>>, Box<Expression<'a>>),
-    Member(MemberAccess, Box<Expression<'a>>, Cow<'a, str>),
+    Member(MemberAccess, Box<Expression<'a>>, &'a str),
     ArrayElement(Box<Expression<'a>>, Box<Expression<'a>>),
 }
 
@@ -206,11 +206,7 @@ fn wrap_comparision<'a>(
     Expression::Comparision(op, Box::new(el), Box::new(er))
 }
 
-fn wrap_member<'a>(
-    v: Expression<'a>,
-    access: MemberAccess,
-    member: Cow<'a, str>,
-) -> Expression<'a> {
+fn wrap_member<'a>(v: Expression<'a>, access: MemberAccess, member: &'a str) -> Expression<'a> {
     Expression::Member(access, Box::new(v), member)
 }
 
@@ -298,9 +294,9 @@ impl fmt::Display for Expression<'_> {
 impl<'a> Expression<'a> {
     pub fn to_tokens<'s>(&'s self, tokens: &mut Vec<Token<'s>>, is_inner: bool) {
         match self {
-            Expression::Identifier(id) => tokens.push(Token::Identifier(id.as_ref())),
+            Expression::Identifier(id) => tokens.push(Token::Identifier(id)),
             Expression::Constant(c) => tokens.push(Token::Constant(*c)),
-            Expression::Literal(lit) => tokens.push(Token::Literal(Cow::Borrowed(lit))),
+            Expression::Literal(lit) => tokens.push(Token::Literal(lit)),
             Expression::SizeOf(_) => todo!(),
             Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
                 e.to_tokens(tokens, is_inner);
@@ -373,7 +369,7 @@ impl<'a> Expression<'a> {
             Expression::Member(access, v, member) => {
                 v.to_tokens(tokens, true);
                 tokens.push(access.clone().into());
-                tokens.push(Token::Identifier(member.as_ref()));
+                tokens.push(Token::Identifier(member));
             }
             Expression::ArrayElement(e, i) => {
                 e.to_tokens(tokens, true);
@@ -388,10 +384,7 @@ impl<'a> Expression<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VkXMLToken<'a> {
     C(Token<'a>),
-    TextTag {
-        name: Cow<'a, str>,
-        text: Cow<'a, str>,
-    },
+    TextTag { name: &'a str, text: &'a str },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -429,8 +422,8 @@ fn vk_tokenize<'s, 'a: 's, 'input>(
             let text = n.text().unwrap_or("");
             if n.is_element() {
                 vec![Ok(VkXMLToken::TextTag {
-                    name: Cow::Borrowed(n.tag_name().name()),
-                    text: Cow::Borrowed(text),
+                    name: (n.tag_name().name()),
+                    text: (text),
                 })]
             } else {
                 tokenize(text, parsing_macros, objc_compat)
@@ -519,12 +512,12 @@ pub(crate) fn is_typedef_name(name: &str) -> bool {
 
 peg::parser! {
     pub grammar c_with_vk_ext<'s, 'a>() for VkXMLTokens<'s, 'a> {
-        pub rule identifier() -> Cow<'a, str>
-          = quiet!{[VkXMLToken::C(Token::Identifier(i))] { Cow::Borrowed(*i) }}
+        pub rule identifier() -> &'a str
+          = quiet!{[VkXMLToken::C(Token::Identifier(i))] { (*i) }}
           / expected!("Identifier")
 
-        rule typedef_name() -> Cow<'a, str>
-          = quiet!{[VkXMLToken::C(Token::Identifier(i)) if is_typedef_name(i)] { Cow::Borrowed(*i) }}
+        rule typedef_name() -> &'a str
+          = quiet!{[VkXMLToken::C(Token::Identifier(i)) if is_typedef_name(i)] { (*i) }}
           / expected!("Typedef Name")
 
         rule type_specifier() -> TypeSpecifier<'a>
@@ -550,8 +543,8 @@ peg::parser! {
           = quiet!{[VkXMLToken::C(Token::Constant(c))] { *c }}
           / expected!("Constant")
 
-        rule literal() -> Cow<'a, str>
-          = quiet!{[VkXMLToken::C(Token::Literal(l))] { l.clone() }}
+        rule literal() -> &'a str
+          = quiet!{[VkXMLToken::C(Token::Literal(l))] { l }}
           / expected!("String Literal")
 
         pub rule expr() -> Expression<'a> = precedence!{
@@ -624,8 +617,8 @@ peg::parser! {
         }
 
         // C vk.xml exts
-        rule type_tag() -> Cow<'a, str>
-          = quiet!{[VkXMLToken::TextTag { name, text } if name == "type"] { text.clone() }}
+        rule type_tag() -> &'a str
+          = quiet!{[VkXMLToken::TextTag { name, text } if *name == "type"] { text }}
           / expected!("<type>...</type>")
 
         // handle pointer info, can be '*' or '**' or '* const*'
@@ -634,7 +627,7 @@ peg::parser! {
                 inner.map_or(PointerKind::Single, |inner_is_const| PointerKind::Double { inner_is_const })
             }
 
-        rule typed_tag(name_text: rule<Cow<'a, str>>) -> FieldLike<'a>
+        rule typed_tag(name_text: rule<&'a str>) -> FieldLike<'a>
             = is_const:"const"? is_struct:"struct"? type_name:type_tag() pointer_kind:pointer_kind()? name:name_text() {
                 FieldLike {
                     pointer_kind,
@@ -643,16 +636,16 @@ peg::parser! {
                 }
             }
 
-        rule name_tag() -> Cow<'a, str>
-         = quiet!{[VkXMLToken::TextTag { name, text } if name == "name"] { text.clone() }}
+        rule name_tag() -> &'a str
+         = quiet!{[VkXMLToken::TextTag { name, text } if *name == "name"] { text }}
          / expected!("<name>...</name>")
 
-        rule enum_tag() -> Cow<'a, str>
-         = quiet!{[VkXMLToken::TextTag { name, text } if name == "enum"] { text.clone() }}
+        rule enum_tag() -> &'a str
+         = quiet!{[VkXMLToken::TextTag { name, text } if *name == "enum"] { text }}
          / expected!("<enum>...</enum>")
 
-        rule comment_tag() -> Cow<'a, str>
-         = quiet!{[VkXMLToken::TextTag { name, text } if name == "comment"] { text.clone() }}
+        rule comment_tag() -> &'a str
+         = quiet!{[VkXMLToken::TextTag { name, text } if *name == "comment"] { text }}
          / expected!("<comment>...</comment>")
 
         rule integer() -> u64
@@ -683,7 +676,7 @@ peg::parser! {
             / quiet!{"typedef" "struct" [VkXMLToken::C(Token::Identifier(i)) if *i == "__IOSurface"] "*" name:name_tag() ";" { BaseTypeType::TypeDef(FieldLike {
                 pointer_kind: Some(PointerKind::Single),
                 is_const: false,
-                ..FieldLike::default_new(name, TypeSpecifier::Struct(Cow::Borrowed("__IOSurface")))
+                ..FieldLike::default_new(name, TypeSpecifier::Struct("__IOSurface"))
             }) }}
             / pre:(([VkXMLToken::C(c)] {c.clone()})+) name:name_tag() post:(([VkXMLToken::C(c)] {c.clone()})+) { BaseTypeType::DefineGuarded { pre, name, post } }
 
@@ -702,7 +695,7 @@ peg::parser! {
                 name,
                 comment: None,
                 requires: None,
-                deprecation_comment: dc.map(|v| Cow::Borrowed(*v)),
+                deprecation_comment: dc.copied(),
                 is_disabled,
                 value,
             } }
@@ -712,11 +705,11 @@ peg::parser! {
             / expected!("VKAPI_PTR")
 
         /// <type category="funcptr"> ... </type>
-        pub rule type_funcptr(requires_attr: Option<&'a str>) -> FnPtrType<'a>
+        pub rule type_funcptr() -> FnPtrType<'a>
           = "typedef" ty_name:type_specifier() ptr:"*"? "(" vkapi_ptr_macro() "*" name:name_tag() ")" "(" params:(
             "void" ")" ";" { None }
             / params:(typed_tag(<identifier()>) ** ",") ")" ";" { Some(params) }
-          ) { FnPtrType { name, return_type_name: ty_name, return_type_pointer_kind: ptr.map(|()| PointerKind::Single), params, requires: requires_attr.map(Cow::Borrowed) } }
+          ) { FnPtrType { name, return_type_name: ty_name, return_type_pointer_kind: ptr.map(|()| PointerKind::Single), params, requires: None } }
   }
 }
 
@@ -806,17 +799,17 @@ fn typed_tag_tokens<'s, 'a: 's>(
         tokens.push(VkXMLToken::C(Token::Struct));
     }
     tokens.push(VkXMLToken::TextTag {
-        name: Cow::Borrowed("type"),
-        text: Cow::Borrowed(field.type_name.as_identifier()),
+        name: ("type"),
+        text: (field.type_name.as_identifier()),
     });
     pointer_kind_tokens(&field.pointer_kind, tokens);
     if name_is_tag {
         tokens.push(VkXMLToken::TextTag {
-            name: Cow::Borrowed("name"),
-            text: Cow::Borrowed(&field.name),
+            name: "name",
+            text: field.name,
         });
     } else {
-        tokens.push(VkXMLToken::C(Token::Identifier(&field.name)));
+        tokens.push(VkXMLToken::C(Token::Identifier(field.name)));
     }
 }
 
@@ -849,8 +842,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FieldLike<'a> {
                         ))),
                         ArrayLength::Constant(c) => {
                             tokens.push(VkXMLToken::TextTag {
-                                name: Cow::Borrowed("enum"),
-                                text: c.clone(),
+                                name: ("enum"),
+                                text: c,
                             });
                         }
                     }
@@ -861,8 +854,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FieldLike<'a> {
         }
         if let Some(comment) = self.comment.as_ref() {
             tokens.push(VkXMLToken::TextTag {
-                name: Cow::Borrowed("comment"),
-                text: comment.clone(),
+                name: ("comment"),
+                text: comment,
             });
         }
     }
@@ -883,8 +876,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s BaseTypeType<'a> {
             BaseTypeType::Forward(name) => tokens.extend([
                 VkXMLToken::C(Token::Struct),
                 VkXMLToken::TextTag {
-                    name: Cow::Borrowed("name"),
-                    text: name.clone(),
+                    name: "name",
+                    text: name,
                 },
                 VkXMLToken::C(Token::SemiColon),
             ]),
@@ -896,8 +889,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s BaseTypeType<'a> {
             BaseTypeType::DefineGuarded { pre, name, post } => {
                 tokens.extend(pre.iter().cloned().map(VkXMLToken::C));
                 tokens.push(VkXMLToken::TextTag {
-                    name: Cow::Borrowed("name"),
-                    text: name.clone(),
+                    name: "name",
+                    text: name,
                 });
                 tokens.extend(post.iter().cloned().map(VkXMLToken::C));
             }
@@ -916,7 +909,7 @@ impl<'s, 'a: 's> TryFromTokens<'s, 'a> for MacroDefine<'a> {
 
 impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s MacroDefine<'a> {
     fn to_tokens(&'s self, tokens: &mut Vec<VkXMLToken<'s>>) {
-        if let Some(comment) = self.deprecation_comment.as_deref() {
+        if let Some(comment) = self.deprecation_comment {
             tokens.push(VkXMLToken::C(Token::_DeprecationComment(comment)));
             tokens.push(VkXMLToken::C(Token::NewLine));
         }
@@ -927,8 +920,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s MacroDefine<'a> {
             tokens.push(VkXMLToken::C(Token::Identifier("define")));
         }
         tokens.push(VkXMLToken::TextTag {
-            name: Cow::Borrowed("name"),
-            text: self.name.clone(),
+            name: "name",
+            text: self.name,
         });
         match &self.value {
             MacroDefineValue::Expression(expr) => {
@@ -945,7 +938,7 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s MacroDefine<'a> {
                     } else {
                         tokens.push(VkXMLToken::C(Token::Comma));
                     }
-                    tokens.push(VkXMLToken::C(Token::Identifier(param.as_ref())));
+                    tokens.push(VkXMLToken::C(Token::Identifier(param)));
                 }
                 tokens.push(VkXMLToken::C(Token::RParen));
                 tokens.push(VkXMLToken::C(Token::Whitespace));
@@ -957,8 +950,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s MacroDefine<'a> {
             } => {
                 tokens.push(VkXMLToken::C(Token::Whitespace));
                 tokens.push(VkXMLToken::TextTag {
-                    name: Cow::Borrowed("type"),
-                    text: fn_name.clone(),
+                    name: "type",
+                    text: fn_name,
                 });
                 tokens.push(VkXMLToken::C(Token::LParen));
                 let mut expr_tokens = Vec::with_capacity(32);
@@ -983,7 +976,7 @@ impl<'s, 'a: 's> TryFromTokens<'s, 'a> for FnPtrType<'a> {
     const OBJC_COMPAT: bool = false;
 
     fn try_from_tokens(tokens: &VkXMLTokens<'s, 'a>) -> Result<Self, ParseError> {
-        c_with_vk_ext::type_funcptr(tokens, None)
+        c_with_vk_ext::type_funcptr(tokens)
     }
 }
 
@@ -998,8 +991,8 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FnPtrType<'a> {
         tokens.push(VkXMLToken::C(Token::Identifier("VKAPI_PTR")));
         tokens.push(VkXMLToken::C(Token::MulStar));
         tokens.push(VkXMLToken::TextTag {
-            name: Cow::Borrowed("name"),
-            text: Cow::Borrowed(&self.name),
+            name: "name",
+            text: self.name,
         });
         tokens.push(VkXMLToken::C(Token::RParen));
         tokens.push(VkXMLToken::C(Token::LParen));

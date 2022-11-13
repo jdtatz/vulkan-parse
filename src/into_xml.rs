@@ -211,7 +211,7 @@ impl<'a> IntoXMLElement for Alias<'a> {
         element
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("alias", alias)
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_empty_()
     }
 }
@@ -242,7 +242,7 @@ impl<'a, T: IntoXML> IntoXML for MaybeComment<'a, T> {
 
 impl<'a> IntoXMLElement for Comment<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
-        element.write_escaped_text(&self.0)
+        element.write_escaped_text(self.0)
     }
 
     const TAG: &'static str = "comment";
@@ -263,20 +263,20 @@ impl<'a> IntoXML for Items<'a> {
         match self {
             Items::Platforms { platforms, comment } => writer
                 .create_element2("platforms")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(platforms),
             Items::Tags { tags, comment } => writer
                 .create_element2("tags")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(tags),
             Items::Types { types, comment } => writer
                 .create_element2("types")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(types),
             Items::Enums(enums) => enums.write_xml(writer),
             Items::Commands { commands, comment } => writer
                 .create_element2("commands")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(commands),
             Items::Features(features) => features.write_xml(writer),
             Items::Extensions {
@@ -284,7 +284,7 @@ impl<'a> IntoXML for Items<'a> {
                 comment,
             } => writer
                 .create_element2("extensions")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(extensions),
             Items::Formats(formats) => writer.create_element2("formats").write_children(formats),
             Items::SpirvExtensions {
@@ -292,14 +292,14 @@ impl<'a> IntoXML for Items<'a> {
                 comment,
             } => writer
                 .create_element2("spirvextensions")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(extensions),
             Items::SpirvCapabilities {
                 capabilities,
                 comment,
             } => writer
                 .create_element2("spirvcapabilities")
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_children(capabilities),
         }
     }
@@ -308,9 +308,9 @@ impl<'a> IntoXML for Items<'a> {
 impl<'a> IntoXMLElement for Platform<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
-            .with_fmt_attribute("name", &self.name)
-            .with_fmt_attribute("protect", &self.protect)
-            .with_opt_attribute("comment", self.comment.as_deref())
+            .with_fmt_attribute("name", self.name)
+            .with_fmt_attribute("protect", self.protect)
+            .with_opt_attribute("comment", self.comment)
             .write_empty_()
     }
 
@@ -320,9 +320,9 @@ impl<'a> IntoXMLElement for Platform<'a> {
 impl<'a> IntoXMLElement for Tag<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
-            .with_fmt_attribute("name", &self.name)
-            .with_fmt_attribute("author", &self.author)
-            .with_fmt_attribute("contact", &self.contact)
+            .with_fmt_attribute("name", self.name)
+            .with_fmt_attribute("author", self.author)
+            .with_fmt_attribute("contact", self.contact)
             .write_empty_()
     }
 
@@ -349,7 +349,7 @@ fn write_tokens<'t, W: Write>(
             VkXMLToken::TextTag { name, text } => {
                 last_ident_like = false;
                 writer
-                    .create_element2(name.as_ref())
+                    .create_element2(name)
                     .write_escaped_text(text.as_ref())?;
             }
         }
@@ -404,7 +404,7 @@ impl<'a> IntoXMLElement for RequiresType<'a> {
         let Self { name, requires } = self;
         element
             .with_fmt_attribute("name", name)
-            .with_opt_attribute("requires", requires.as_deref())
+            .with_opt_attribute("requires", requires.as_ref())
             .write_empty_()
     }
 }
@@ -456,9 +456,9 @@ impl<'a> IntoXMLElement for GuardedDefine<'a> {
 
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
-            .with_fmt_attribute("name", &self.name)
-            .with_opt_attribute("requires", self.requires.as_deref())
-            .with_opt_attribute("comment", self.comment.as_deref())
+            .with_fmt_attribute("name", self.name)
+            .with_opt_attribute("requires", self.requires.as_ref())
+            .with_opt_attribute("comment", self.comment.as_ref())
             .write_inner_content_(|writer| {
                 write_tokens(self.code.iter().cloned().map(VkXMLToken::C), writer)
             })
@@ -470,8 +470,8 @@ impl<'a> IntoXMLElement for MacroDefine<'a> {
 
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
-            .with_opt_attribute("requires", self.requires.as_deref())
-            .with_opt_attribute("comment", self.comment.as_deref())
+            .with_opt_attribute("requires", self.requires.as_ref())
+            .with_opt_attribute("comment", self.comment)
             .write_inner_content_(|writer| write_tokens(self.to_tokens_vector(), writer))
     }
 }
@@ -498,8 +498,8 @@ impl<'a> IntoXMLElement for BitmaskType<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         let Self {
             name,
-            is_64bits,
-            has_bitvalues,
+            is_64bits: _,
+            has_bitvalues: _,
         } = self;
         element // TODO requires / bitvalues
             .with_opt_attribute("bitvalues", self.bitvalues())
@@ -530,7 +530,7 @@ impl<'a> IntoXMLElement for HandleType<'a> {
             parent,
         } = self;
         element
-            .with_opt_attribute("parent", parent.as_deref())
+            .with_opt_attribute("parent", parent.as_ref())
             .with_fmt_attribute("objtypeenum", obj_type_enum)
             .write_inner_content_(|writer| {
                 writer
@@ -568,7 +568,7 @@ impl<'a> IntoXMLElement for FnPtrType<'a> {
 
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
-            .with_opt_attribute("requires", self.requires.as_deref())
+            .with_opt_attribute("requires", self.requires)
             .write_inner_content_(|writer| write_tokens(self.to_tokens_vector(), writer))
     }
 }
@@ -595,11 +595,11 @@ impl<'a> IntoXMLElement for StructType<'a> {
             .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
             .with_opt_attribute(
                 "structextends",
-                struct_extends.as_deref().map(|se| se.join(",")),
+                struct_extends.as_ref().map(|se| se.join(",")),
             )
             .with_opt_attribute("allowduplicate", allow_duplicate.map(|b| b.to_string()))
-            .with_opt_attribute("requires", requires.as_deref())
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("requires", requires.as_ref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_children(members)
     }
 }
@@ -621,7 +621,7 @@ impl<'a> IntoXMLElement for UnionType<'a> {
         element
             .with_fmt_attribute("name", name)
             .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_children(members)
     }
 }
@@ -658,7 +658,7 @@ impl<'a> IntoXMLElement for Enums<'a> {
         let elem = element
             .with_fmt_attribute("name", name)
             .with_opt_attribute("bitwidth", bit_width.as_ref())
-            .with_opt_attribute("comment", comment.as_deref());
+            .with_opt_attribute("comment", comment.as_ref());
         match values {
             EnumsValues::Constants(constants) => elem.write_children(constants),
             EnumsValues::Enum(values, unused) => elem
@@ -694,7 +694,7 @@ impl<'a> IntoXMLElement for ConstantEnum<'a> {
             .with_fmt_attribute("type", type_name)
             .with_fmt_attribute("value", value)
             .with_fmt_attribute("name", name)
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_empty_()
     }
 }
@@ -711,7 +711,7 @@ impl<'a> IntoXMLElement for ValueEnum<'a> {
         element
             .with_fmt_attribute("value", value)
             .with_fmt_attribute("name", name)
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_empty_()
     }
 }
@@ -739,7 +739,7 @@ impl<'a> IntoXMLElement for BitPosEnum<'a> {
         element
             .with_fmt_attribute("bitpos", bitpos)
             .with_fmt_attribute("name", name)
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_empty_()
     }
 }
@@ -751,7 +751,7 @@ impl<'a> IntoXMLElement for UnusedEnum<'a> {
         let UnusedEnum { start, comment } = self;
         element
             .with_fmt_attribute("start", start)
-            .with_opt_attribute("comment", comment.as_deref())
+            .with_opt_attribute("comment", comment.as_ref())
             .write_empty_()
     }
 }
@@ -839,7 +839,7 @@ impl<'a> IntoXMLElement for Command<'a> {
                 "successcodes",
                 success_codes.as_ref().map(Seperated::<_, ','>),
             )
-            .with_opt_attribute("errorcodes", error_codes.as_deref().map(|ec| ec.join(",")))
+            .with_opt_attribute("errorcodes", error_codes.as_ref().map(|ec| ec.join(",")))
             .with_opt_attribute("queues", queues.map(Seperated::<_, ','>))
             .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.map(Seperated::<_, ','>))
             .with_opt_attribute("tasks", tasks.map(Seperated::<_, ','>))
@@ -880,9 +880,9 @@ impl<'a> IntoXMLElement for CommandParam<'a> {
             element
                 .with_opt_attribute(
                     "validstructs",
-                    valid_structs.as_deref().map(|vs| vs.join(",")),
+                    valid_structs.as_ref().map(|vs| vs.join(",")),
                 )
-                .with_opt_attribute("stride", stride.as_deref()),
+                .with_opt_attribute("stride", stride.as_ref()),
         )
     }
 
@@ -943,10 +943,7 @@ impl<'a> IntoXMLElement for Extension<'a> {
             .with_opt_attribute("type", kind.as_ref())
             .with_fmt_attribute("supported", supported)
             .with_opt_attribute("requiresCore", requires_core.as_ref())
-            .with_opt_attribute(
-                "requires",
-                requires_depencies.as_deref().map(|d| d.join(",")),
-            )
+            .with_opt_attribute("requires", requires_depencies.as_ref().map(|d| d.join(",")))
             .with_opt_attribute("author", author.as_ref())
             .with_opt_attribute("contact", contact.as_ref())
             .with_opt_attribute("promotedto", promoted_to.as_ref())
@@ -955,7 +952,7 @@ impl<'a> IntoXMLElement for Extension<'a> {
             .with_opt_attribute("sortorder", sort_order.as_ref())
             .with_opt_attribute("platform", platform.as_ref())
             .with_opt_attribute("provisional", provisional.as_ref())
-            .with_opt_attribute("specialuse", special_use.as_deref().map(|d| d.join(",")))
+            .with_opt_attribute("specialuse", special_use.as_ref().map(|d| d.join(",")))
             .with_opt_attribute("comment", comment.as_ref())
             .write_children(requires)
     }
@@ -1005,12 +1002,12 @@ impl<'a> IntoXML for RequireValue<'a> {
             RequireValue::Type { name, comment } => writer
                 .create_element2("type")
                 .with_fmt_attribute("name", name)
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_empty_(),
             RequireValue::Command { name, comment } => writer
                 .create_element2("command")
                 .with_fmt_attribute("name", name)
-                .with_opt_attribute("comment", comment.as_deref())
+                .with_opt_attribute("comment", comment.as_ref())
                 .write_empty_(),
             RequireValue::Enum(RequireEnum {
                 name,
@@ -1021,10 +1018,10 @@ impl<'a> IntoXML for RequireValue<'a> {
             }) => {
                 let elem = writer
                     .create_element2("enum")
-                    .with_opt_attribute("name", name.as_deref())
-                    .with_opt_attribute("extends", extends.as_deref())
-                    .with_opt_attribute("protect", protect.as_deref())
-                    .with_opt_attribute("comment", comment.as_deref());
+                    .with_opt_attribute("name", name.as_ref())
+                    .with_opt_attribute("extends", extends.as_ref())
+                    .with_opt_attribute("protect", protect.as_ref())
+                    .with_opt_attribute("comment", comment.as_ref());
                 match value {
                     Some(RequireValueEnum::Alias(alias)) => elem.with_fmt_attribute("alias", alias),
                     Some(RequireValueEnum::Bitpos(bitpos)) => {
@@ -1143,7 +1140,7 @@ impl<'a> IntoXMLElement for StructEnable<'a> {
             .with_fmt_attribute("struct", name)
             .with_fmt_attribute("feature", feature)
             .with_fmt_attribute("requires", requires)
-            .with_opt_attribute("alias", alias.as_deref())
+            .with_opt_attribute("alias", alias.as_ref())
             .write_empty_()
     }
 }

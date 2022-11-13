@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
 use roxmltree::Node;
 
@@ -11,7 +11,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct SpirvExtension<'a> {
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     // TODO, usually the only diffrence between `name` & `enable_extension` is the prefix ("SPV_" vs "VK_"), but not always
     pub enable_extension: ExtensionEnable<'a>,
     pub enable_version: Option<VersionEnable>,
@@ -20,7 +20,7 @@ pub struct SpirvExtension<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct SpirvCapability<'a> {
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     pub enables: Vec<EnableSpirvCapability<'a>>,
 }
 
@@ -37,8 +37,8 @@ pub enum EnableSpirvCapability<'a> {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum EnableRequires<'a> {
     Core(StdVersion),
-    Extension(Cow<'a, str>),
-    Mix(StdVersion, Cow<'a, str>),
+    Extension(&'a str),
+    Mix(StdVersion, &'a str),
 }
 
 impl<'a> TryFrom<&'a str> for EnableRequires<'a> {
@@ -46,11 +46,11 @@ impl<'a> TryFrom<&'a str> for EnableRequires<'a> {
 
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         Ok(if let Some((v, e)) = s.split_once(',') {
-            EnableRequires::Mix(v.parse()?, Cow::Borrowed(e))
+            EnableRequires::Mix(v.parse()?, e)
         } else if let Ok(v) = s.parse() {
             EnableRequires::Core(v)
         } else {
-            EnableRequires::Extension(Cow::Borrowed(s))
+            EnableRequires::Extension(s)
         })
     }
 }
@@ -72,28 +72,28 @@ pub struct VersionEnable(pub StdVersion);
 /// If the API extension is supported and enabled, the SPIR-V extension or capability is enabled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct ExtensionEnable<'a>(pub Cow<'a, str>);
+pub struct ExtensionEnable<'a>(pub &'a str);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructEnable<'a> {
     /// API feature structure name
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// API feature name, matching the name of a member of the `name` structure
-    pub feature: Cow<'a, str>,
+    pub feature: &'a str,
     /// list of API feature version numbers and/or extension names.
     pub requires: EnableRequires<'a>,
     /// Another API feature name which is an alias of `feature`. Needed when the same feature is provided by two different API versions or extensions.
-    pub alias: Option<Cow<'a, str>>,
+    pub alias: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct PropertyEnable<'a> {
     /// API property structure name
-    pub name: Cow<'a, str>,
+    pub name: &'a str,
     /// API property name, matching the name of a member of the `name` structure
-    pub member: Cow<'a, str>,
+    pub member: &'a str,
     /// A value, matching an API enum value. If the property is a bitfield, `value` must be a bitmask value belonging to the `member` bitfield type. Otherwise, `value` must be an enum name defined for the `member` enumeration type.
     pub value: Expression<'a>,
     /// list of API feature version numbers and/or extension names.

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt, ops::Range, str::FromStr};
+use std::{fmt, ops::Range, str::FromStr};
 
 use logos::{Lexer, Logos};
 
@@ -100,22 +100,20 @@ impl Constant {
 const IS: &[char] = &['u', 'U', 'l', 'L'];
 const FS: &[char] = &['f', 'F', 'l', 'L'];
 
-fn fix_literal(lit: &str) -> Cow<str> {
+fn fix_literal(lit: &str) -> &str {
     let lit = lit.strip_prefix('L').unwrap_or(lit);
     let lit = lit.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
-    // TODO remove un-escaped newlines
-    Cow::Borrowed(lit)
+    lit
 }
 
-fn fix_escaped_literal(lit: &str) -> Cow<str> {
+fn fix_escaped_literal(lit: &str) -> &str {
     let lit = lit.strip_prefix('L').unwrap_or(lit);
     let lit = lit
         .strip_prefix("&quot;")
         .unwrap()
         .strip_suffix("&quot;")
         .unwrap();
-    // TODO remove un-escaped newlines
-    Cow::Borrowed(lit)
+    lit
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -381,7 +379,7 @@ pub enum Token<'a> {
     // &quot;
     #[regex(r#"L?&quot;([^\\]|\\t|\\u|\\n)*&quot;"#, |lex| fix_escaped_literal(lex.slice()))]
     #[regex(r#"L?"([^"\\]|\\t|\\u|\\n|\\")*""#, |lex| fix_literal(lex.slice()))]
-    Literal(Cow<'a, str>),
+    Literal(&'a str),
 }
 
 impl<'a> Token<'a> {
