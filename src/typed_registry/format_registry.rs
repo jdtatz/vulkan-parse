@@ -2,7 +2,9 @@ use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use roxmltree::Node;
 
-use crate::{attribute, attribute_fs, try_attribute, try_attribute_fs, Parse, ParseResult};
+use crate::{
+    attribute, attribute_fs, parse_children, try_attribute, try_attribute_fs, Parse, ParseResult,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
@@ -178,7 +180,7 @@ impl<'a, 'input> Parse<'a, 'input> for Format<'a> {
                 packed: try_attribute_fs(node, "packed")?,
                 compressed: try_attribute(node, "compressed")?,
                 chroma: try_attribute(node, "chroma")?,
-                children: Parse::parse(node)?,
+                children: parse_children(node)?,
             }))
         } else {
             Ok(None)

@@ -3,7 +3,7 @@ use std::ops;
 use roxmltree::Node;
 
 use super::FieldLike;
-use crate::{try_attribute, try_attribute_sep, ErrorKind, Parse, ParseResult};
+use crate::{parse_children, try_attribute, try_attribute_sep, Parse, ParseResult};
 
 /// Structured definition of a single API command (function)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,7 +229,7 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("implicitexternsyncparams") {
             Ok(Some(ImplicitExternSyncParams {
-                params: Parse::parse(node)?,
+                params: parse_children(node)?,
             }))
         } else {
             Ok(None)
@@ -240,13 +240,7 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
 impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("command") {
-            let mut it = node.children().filter(Node::is_element);
-            let proto_node = it
-                .next()
-                .filter(|n| n.has_tag_name("proto"))
-                .ok_or_else(|| ErrorKind::MissingChildElement("proto", node.id()))?;
-            let proto = Parse::parse(proto_node)?;
-            let (params, implicit_extern_sync_params) = crate::parse_terminated(it)?;
+            let (proto, params, implicit_extern_sync_params) = parse_children(node)?;
             Ok(Some(Command {
                 proto,
                 params,

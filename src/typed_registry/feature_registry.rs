@@ -2,8 +2,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, SemVarVersion};
 use crate::{
-    attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
-    StdVersion,
+    attribute, attribute_fs, parse_children, try_attribute, try_attribute_fs, Expression, Parse,
+    ParseResult, StdVersion,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
@@ -102,7 +102,7 @@ impl<'a, 'input> Parse<'a, 'input> for Feature<'a> {
                 api: attribute(node, "api")?,
                 number: attribute_fs(node, "number")?,
                 comment: try_attribute(node, "comment")?,
-                requires: Parse::parse(node)?,
+                requires: parse_children(node)?,
             }))
         } else {
             Ok(None)
@@ -117,7 +117,7 @@ impl<'a, 'input> Parse<'a, 'input> for Require<'a> {
                 feature: try_attribute_fs(node, "feature")?,
                 extension: try_attribute(node, "extension")?,
                 comment: try_attribute(node, "comment")?,
-                values: Parse::parse(node)?,
+                values: parse_children(node)?,
             }))
         } else {
             Ok(None)
@@ -140,7 +140,7 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
                 name: try_attribute(node, "name")?,
                 extends: try_attribute(node, "extends")?,
                 protect: try_attribute(node, "protect")?,
-                value: Parse::parse(node)?,
+                value: Parse::try_parse(node)?,
                 comment: try_attribute(node, "comment")?,
             }))),
             _ => Ok(None),

@@ -4,8 +4,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, attribute_fs, try_attribute, try_attribute_fs, Expression, Parse, ParseResult,
-    Terminated,
+    attribute, attribute_fs, parse_children, try_attribute, try_attribute_fs, Expression, Parse,
+    ParseResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,9 +122,12 @@ impl<'a, 'input> Parse<'a, 'input> for EnumsValues<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         let ty_attr = try_attribute(node, "type")?;
         match ty_attr {
-            None => Ok(Some(Self::Constants(Parse::parse(node)?))),
-            Some("enum") => Ok(Some(Terminated::parse(node)?.transform(Self::Enum))),
-            Some("bitmask") => Ok(Some(Self::Bitmask(Parse::parse(node)?))),
+            None => Ok(Some(Self::Constants(parse_children(node)?))),
+            Some("enum") => {
+                let (values, unused) = parse_children(node)?;
+                Ok(Some(Self::Enum(values, unused)))
+            }
+            Some("bitmask") => Ok(Some(Self::Bitmask(parse_children(node)?))),
             _ => Ok(None),
         }
     }

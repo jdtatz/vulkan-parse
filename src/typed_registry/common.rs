@@ -7,7 +7,7 @@ use std::{
 
 use roxmltree::Node;
 
-use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
+use crate::{attribute, try_attribute, Parse, ParseChildren, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -211,15 +211,14 @@ impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T>
     }
 }
 
-impl<'a, 'input: 'a, T: 'a + Parse<'a, 'input>> ParseElements<'a, 'input>
-    for CommentendChildren<'a, T>
+impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
+    for CommentendChildren<'node, T>
 {
-    type Item = MaybeComment<'a, T>;
-
-    type NodeIter = roxmltree::Children<'a, 'input>;
-
-    fn get_nodes(node: Node<'a, 'input>) -> ParseResult<Option<Self::NodeIter>> {
-        Ok(Some(node.children()))
+    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
+        it: &mut core::iter::Peekable<I>,
+        parent_id: roxmltree::NodeId,
+    ) -> ParseResult<Self> {
+        ParseChildren::from_children(it, parent_id).map(CommentendChildren)
     }
 }
 

@@ -226,109 +226,6 @@ pub(crate) trait Parse<'a, 'input>: Sized {
     }
 }
 
-impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for Option<T> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        match T::try_parse(node) {
-            Ok(Some(v)) => Ok(Some(Some(v))),
-            // TODO: which version do I want?
-            // Ok(None) => Ok(Some(None)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
-        match T::try_parse(node) {
-            Ok(Some(v)) => Ok(Some(v)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-}
-
-pub(crate) trait ParseElements<'a, 'input: 'a>: Sized + FromIterator<Self::Item> {
-    type Item: Parse<'a, 'input>;
-    type NodeIter: Iterator<Item = Node<'a, 'input>>;
-
-    fn get_nodes(node: Node<'a, 'input>) -> ParseResult<Option<Self::NodeIter>>;
-}
-
-impl<'a, 'input: 'a, V: ParseElements<'a, 'input>> Parse<'a, 'input> for V {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(nodes) = V::get_nodes(node)? {
-            nodes
-                .filter(Node::is_element)
-                .map(V::Item::parse)
-                .collect::<ParseResult<_>>()
-                .map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
-        if let Some(nodes) = V::get_nodes(node)? {
-            nodes.filter(Node::is_element).map(V::Item::parse).collect()
-        } else {
-            Err(ErrorKind::NoMatch(node.id()))
-        }
-    }
-}
-
-pub(crate) fn parse_terminated<
-    'a,
-    'input: 'a,
-    V: ParseElements<'a, 'input>,
-    T: Parse<'a, 'input>,
->(
-    nodes: impl DoubleEndedIterator<Item = Node<'a, 'input>>,
-) -> ParseResult<(V, Option<T>)> {
-    let mut it = nodes.filter(Node::is_element);
-    if let Some(last) = it.next_back() {
-        if let Some(t) = T::try_parse(last)? {
-            Ok((it.map(V::Item::parse).collect::<ParseResult<V>>()?, Some(t)))
-        } else {
-            Ok((
-                it.chain(std::iter::once(last))
-                    .map(V::Item::parse)
-                    .collect::<ParseResult<V>>()?,
-                None,
-            ))
-        }
-    } else {
-        Ok((std::iter::empty().collect(), None))
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Terminated<V, T>(pub V, pub Option<T>);
-
-impl<V, T> Terminated<V, T> {
-    pub fn transform<R>(self, trans: impl FnOnce(V, Option<T>) -> R) -> R {
-        let Self(v, t) = self;
-        trans(v, t)
-    }
-}
-
-impl<'a, 'input: 'a, V: ParseElements<'a, 'input>, T: Parse<'a, 'input>> Parse<'a, 'input>
-    for Terminated<V, T>
-where
-    <V as ParseElements<'a, 'input>>::NodeIter: DoubleEndedIterator,
-{
-    fn try_parse(_node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        todo!()
-    }
-
-    fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
-        if let Some(nodes) = V::get_nodes(node)? {
-            let (vs, last) = parse_terminated(nodes)?;
-            Ok(Self(vs, last))
-        } else {
-            Err(ErrorKind::NoMatch(node.id()))
-        }
-    }
-}
-
 pub fn parse_registry<'a, 'input: 'a>(
     document: &'a Document<'input>,
 ) -> Result<Registry<'a>, Error<'a, 'input>> {
@@ -336,14 +233,101 @@ pub fn parse_registry<'a, 'input: 'a>(
     Registry::parse(root).map_err(|kind| Error { kind, document })
 }
 
-// Generic Impls
+trait PeekableExt<I: Iterator> {
+    fn next_if_some<R>(&mut self, func: impl FnOnce(&I::Item) -> Option<R>) -> Option<R>;
+}
 
-impl<'a, 'input: 'a, T: Parse<'a, 'input>> ParseElements<'a, 'input> for Vec<T> {
-    type Item = T;
-
-    type NodeIter = roxmltree::Children<'a, 'input>;
-
-    fn get_nodes(node: Node<'a, 'input>) -> ParseResult<Option<Self::NodeIter>> {
-        Ok(Some(node.children()))
+impl<I: Iterator> PeekableExt<I> for core::iter::Peekable<I> {
+    fn next_if_some<R>(
+        &mut self,
+        func: impl FnOnce(&<I as Iterator>::Item) -> Option<R>,
+    ) -> Option<R> {
+        let mut result = None;
+        self.next_if(|item| {
+            result = func(item);
+            result.is_some()
+        });
+        result
     }
 }
+
+pub(crate) trait ParseChildren<'node, 'input: 'node>: 'node + Sized {
+    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
+        it: &mut core::iter::Peekable<I>,
+        parent_id: NodeId,
+    ) -> ParseResult<Self>;
+}
+
+pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node, 'input>>(
+    node: Node<'node, 'input>,
+) -> ParseResult<T> {
+    let mut it = node.children().filter(Node::is_element).peekable();
+    let res = T::from_children(&mut it, node.id())?;
+    if let Some(n) = it.next() {
+        Err(ErrorKind::NoMatch(n.id()))
+    } else {
+        Ok(res)
+    }
+}
+
+impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input> for T {
+    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
+        it: &mut core::iter::Peekable<I>,
+        parent_id: NodeId,
+    ) -> ParseResult<Self> {
+        // FIXME replace "$" with either a way of propagatting the tag name from T or introduce a new ErrorKind
+        it.next().map_or(
+            Err(ErrorKind::MissingChildElement("$", parent_id)),
+            T::parse,
+        )
+    }
+}
+
+impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
+    for Option<T>
+{
+    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
+        it: &mut core::iter::Peekable<I>,
+        _parent_id: NodeId,
+    ) -> ParseResult<Self> {
+        it.next_if_some(|item| T::try_parse(*item).transpose())
+            .transpose()
+    }
+}
+
+impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
+    for Vec<T>
+{
+    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
+        it: &mut core::iter::Peekable<I>,
+        _parent_id: NodeId,
+    ) -> ParseResult<Self> {
+        let mut out = Vec::new();
+        while let Some(v) = it.next_if_some(|item| T::try_parse(*item).transpose()) {
+            out.push(v?);
+        }
+        Ok(out)
+    }
+}
+
+macro_rules! tuple_impl {
+    ( $( $name:ident )* ) => {
+        impl<'node, 'input: 'node, $($name: 'node + ParseChildren<'node, 'input>),*> ParseChildren<'node, 'input> for ($($name,)*)
+        {
+            #[allow(unused_variables)]
+            fn from_children<I: Iterator<Item=Node<'node, 'input>>>(it: &mut core::iter::Peekable<I>, parent_id: NodeId) -> ParseResult<Self> {
+                Ok(($($name::from_children(it, parent_id)?,)*))
+            }
+        }
+    };
+}
+
+macro_rules! tuple_impls {
+    () => { tuple_impl!{} };
+    ( $head:ident $( $tail:ident )* ) => {
+        tuple_impls!{ $($tail)* }
+        tuple_impl!{$head $($tail)* }
+    }
+}
+
+tuple_impls! { T1 T2 T3 T4 T5 T6 }

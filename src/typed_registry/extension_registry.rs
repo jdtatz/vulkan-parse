@@ -6,7 +6,10 @@ use super::{
     common::{SemVarVersion, StdVersion},
     feature_registry::Require,
 };
-use crate::{attribute, try_attribute, try_attribute_fs, try_attribute_sep, Parse, ParseResult};
+use crate::{
+    attribute, parse_children, try_attribute, try_attribute_fs, try_attribute_sep, Parse,
+    ParseResult,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -122,7 +125,7 @@ impl<'a, 'input> Parse<'a, 'input> for Extension<'a> {
                     deprecated_by: try_attribute(node, "deprecatedby")?,
                     obsoleted_by: try_attribute(node, "obsoletedby")?,
                     sort_order: try_attribute_fs(node, "sortorder")?,
-                    requires: Parse::parse(node)?,
+                    requires: parse_children(node)?,
                     platform: try_attribute(node, "platform")?,
                     provisional: try_attribute_fs(node, "provisional")?,
                     special_use: try_attribute_sep::<_, ','>(node, "specialuse")?,
@@ -143,7 +146,7 @@ impl<'a, 'input> Parse<'a, 'input> for PseudoExtension<'a> {
             Ok(Some(PseudoExtension {
                 name: attribute(node, "name")?,
                 supported: attribute(node, "supported")?,
-                requires: Parse::parse(node)?,
+                requires: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             }))
         } else {

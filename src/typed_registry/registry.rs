@@ -10,7 +10,7 @@ use super::{
     spirv_registry::{SpirvCapability, SpirvExtension},
     types_registry::Type,
 };
-use crate::{attribute, try_attribute, Parse, ParseElements, ParseResult};
+use crate::{attribute, parse_children, try_attribute, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -86,14 +86,10 @@ impl<'a> FromIterator<MaybeComment<'a, Items<'a>>> for Registry<'a> {
     }
 }
 
-impl<'a, 'input: 'a> ParseElements<'a, 'input> for Registry<'a> {
-    type Item = MaybeComment<'a, Items<'a>>;
-
-    type NodeIter = roxmltree::Children<'a, 'input>;
-
-    fn get_nodes(node: Node<'a, 'input>) -> ParseResult<Option<Self::NodeIter>> {
+impl<'a, 'input: 'a> Parse<'a, 'input> for Registry<'a> {
+    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("registry") {
-            Ok(Some(node.children()))
+            parse_children(node).map(Self).map(Some)
         } else {
             Ok(None)
         }
@@ -104,34 +100,34 @@ impl<'a, 'input> Parse<'a, 'input> for Items<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "platforms" => Ok(Some(Items::Platforms {
-                platforms: Parse::parse(node)?,
+                platforms: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
             "tags" => Ok(Some(Items::Tags {
-                tags: Parse::parse(node)?,
+                tags: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
             "types" => Ok(Some(Items::Types {
-                types: Parse::parse(node)?,
+                types: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
             "enums" => Ok(Some(Items::Enums(Parse::parse(node)?))),
             "commands" => Ok(Some(Items::Commands {
-                commands: Parse::parse(node)?,
+                commands: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
             "feature" => Ok(Some(Items::Features(Parse::parse(node)?))),
             "extensions" => Ok(Some(Items::Extensions {
-                extensions: Parse::parse(node)?,
+                extensions: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
-            "formats" => Ok(Some(Items::Formats(Parse::parse(node)?))),
+            "formats" => Ok(Some(Items::Formats(parse_children(node)?))),
             "spirvextensions" => Ok(Some(Items::SpirvExtensions {
-                extensions: Parse::parse(node)?,
+                extensions: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
             "spirvcapabilities" => Ok(Some(Items::SpirvCapabilities {
-                capabilities: Parse::parse(node)?,
+                capabilities: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             })),
             _ => Ok(None),

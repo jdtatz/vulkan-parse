@@ -4,8 +4,8 @@ use roxmltree::Node;
 
 use super::common::StdVersion;
 use crate::{
-    attribute, try_attribute, try_attribute_fs, ErrorKind, Expression, Parse, ParseResult,
-    StdVersionParseError,
+    attribute, parse_children, try_attribute, try_attribute_fs, ErrorKind, Expression, Parse,
+    ParseResult, StdVersionParseError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,7 +128,7 @@ impl<'a, 'input> Parse<'a, 'input> for SpirvCapability<'a> {
         if node.has_tag_name("spirvcapability") {
             Ok(Some(SpirvCapability {
                 name: (attribute(node, "name")?),
-                enables: Parse::parse(node)?,
+                enables: parse_children(node)?,
             }))
         } else {
             Ok(None)

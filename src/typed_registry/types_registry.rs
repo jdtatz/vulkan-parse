@@ -10,8 +10,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, text_value, tokenize, try_attribute, try_attribute_fs, try_attribute_sep,
-    Expression, Parse, ParseResult, Token, TryFromTokens, TypeSpecifier,
+    attribute, parse_children, text_value, tokenize, try_attribute, try_attribute_fs,
+    try_attribute_sep, Expression, Parse, ParseResult, Token, TryFromTokens, TypeSpecifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -770,7 +770,7 @@ impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
             returned_only: try_attribute_fs(node, "returnedonly")?,
             struct_extends: try_attribute_sep::<_, ','>(node, "structextends")?,
             allow_duplicate: try_attribute_fs(node, "allowduplicate")?,
-            members: Parse::parse(node)?,
+            members: parse_children(node)?,
             requires: try_attribute(node, "requires")?,
             comment: try_attribute(node, "comment")?,
         }))
@@ -782,7 +782,7 @@ impl<'a, 'input> Parse<'a, 'input> for UnionType<'a> {
         Ok(Some(UnionType {
             name: attribute(node, "name")?,
             returned_only: try_attribute_fs(node, "returnedonly")?,
-            members: Parse::parse(node)?,
+            members: parse_children(node)?,
             comment: try_attribute(node, "comment")?,
         }))
     }
