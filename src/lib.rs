@@ -9,6 +9,7 @@ extern crate serde;
 #[macro_use]
 extern crate serde_with;
 
+pub mod codegen;
 #[cfg(feature = "roundtrip")]
 pub mod into_xml;
 mod lexer;
