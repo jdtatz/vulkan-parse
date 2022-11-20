@@ -11,12 +11,12 @@ use crate::{
     Alias, BaseTypeType, BitPosEnum, BitmaskEnum, BitmaskType, Command, CommandParam, Comment,
     ConstantEnum, DefineType, DefinitionOrAlias, DynamicShapeKind, EnableSpirvCapability, EnumType,
     Enums, EnumsValues, Extension, ExtensionEnable, Feature, FieldLike, FnPtrType, Format,
-    FormatChild, GuardedDefine, HandleKind, HandleType, ImplicitExternSyncParam,
-    ImplicitExternSyncParams, IncludeType, IntoVkXMLTokens, Items, MacroDefine, MaybeComment,
-    Member, Platform, PropertyEnable, Proto, PseudoExtension, Registry, Require, RequireEnum,
-    RequireValue, RequireValueEnum, RequiresType, Seperated, SpirvCapability, SpirvExtension,
-    StructEnable, StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum, VersionEnable,
-    VkXMLToken, WrappedExtension,
+    FormatChild, GuardedDefine, HandleType, ImplicitExternSyncParam, ImplicitExternSyncParams,
+    IncludeType, IntoVkXMLTokens, Items, MacroDefine, MaybeComment, Member, Platform,
+    PropertyEnable, Proto, PseudoExtension, Registry, Require, RequireEnum, RequireValue,
+    RequireValueEnum, RequiresType, Seperated, SpirvCapability, SpirvExtension, StructEnable,
+    StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum, VersionEnable, VkXMLToken,
+    WrappedExtension,
 };
 
 type Result = std::result::Result<(), Error>;
@@ -114,26 +114,12 @@ trait ElementWriterExt<'a, W: Write>: Sized {
     where
         F: FnOnce(&mut Writer<W>) -> Result;
 
-    // fn write_children<I>(self, children: I) -> Result
-    // where
-    //     I: IntoIterator,
-    //     I::Item: IntoXML,
-    // {
-    //     self.write_inner_content_(move |writer| {
-    //         for child in children {
-    //             child.write_xml(writer)?;
-    //         }
-    //         Ok(())
-    //     })
-    // }
+    fn write_tokens<'t, T: ?Sized + IntoVkXMLTokens<'t>>(self, value: &T) -> Result {
+        self.write_inner_content_(|writer| write_tokens(value.to_tokens_vector(), writer))
+    }
 
-    fn write_children<T: IntoXML>(self, children: &[T]) -> Result {
-        self.write_inner_content_(move |writer| {
-            for child in children {
-                child.write_xml(writer)?;
-            }
-            Ok(())
-        })
+    fn write_children<I: IntoXMLChildren>(self, children: I) -> Result {
+        self.write_inner_content_(move |writer| children.write_children(writer))
     }
 }
 
@@ -184,6 +170,36 @@ impl<E: IntoXMLElement> IntoXML for E {
         self.write_element(Self::add_static_attrs(
             writer.create_element2(<Self as IntoXMLElement>::TAG),
         ))
+    }
+}
+
+trait IntoXMLChildren {
+    fn write_children<W: Write>(self, writer: &mut Writer<W>) -> Result;
+}
+
+impl<'t, T: IntoXML> IntoXMLChildren for &'t T {
+    fn write_children<W: Write>(self, writer: &mut Writer<W>) -> Result {
+        self.write_xml(writer)
+    }
+}
+
+impl<'t, T: IntoXML> IntoXMLChildren for Option<&'t T> {
+    fn write_children<W: Write>(self, writer: &mut Writer<W>) -> Result {
+        self.map_or(Ok(()), |v| v.write_xml(writer))
+    }
+}
+
+impl<'t, T: IntoXML> IntoXMLChildren for &'t [T] {
+    fn write_children<W: Write>(self, writer: &mut Writer<W>) -> Result {
+        self.iter().map(|v| v.write_xml(writer)).collect()
+    }
+}
+
+#[impl_trait_for_tuples::impl_for_tuples(4)]
+impl IntoXMLChildren for Tuple {
+    fn write_children<W: Write>(self, writer: &mut Writer<W>) -> Result {
+        for_tuples!( #( Tuple.write_children(writer)?; )* );
+        Ok(())
     }
 }
 
@@ -252,7 +268,7 @@ impl<'a> IntoXMLElement for Comment<'a> {
 
 impl<'a> IntoXMLElement for Registry<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
-        element.write_children(&self.0)
+        element.write_children(self.0.as_slice())
     }
 
     const TAG: &'static str = "registry";
@@ -264,20 +280,20 @@ impl<'a> IntoXML for Items<'a> {
             Items::Platforms { platforms, comment } => writer
                 .create_element2("platforms")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(platforms),
+                .write_children(platforms.as_slice()),
             Items::Tags { tags, comment } => writer
                 .create_element2("tags")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(tags),
+                .write_children(tags.as_slice()),
             Items::Types { types, comment } => writer
                 .create_element2("types")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(types),
+                .write_children(types.as_slice()),
             Items::Enums(enums) => enums.write_xml(writer),
             Items::Commands { commands, comment } => writer
                 .create_element2("commands")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(commands),
+                .write_children(commands.as_slice()),
             Items::Features(features) => features.write_xml(writer),
             Items::Extensions {
                 extensions,
@@ -285,22 +301,24 @@ impl<'a> IntoXML for Items<'a> {
             } => writer
                 .create_element2("extensions")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(extensions),
-            Items::Formats(formats) => writer.create_element2("formats").write_children(formats),
+                .write_children(extensions.as_slice()),
+            Items::Formats(formats) => writer
+                .create_element2("formats")
+                .write_children(formats.as_slice()),
             Items::SpirvExtensions {
                 extensions,
                 comment,
             } => writer
                 .create_element2("spirvextensions")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(extensions),
+                .write_children(extensions.as_slice()),
             Items::SpirvCapabilities {
                 capabilities,
                 comment,
             } => writer
                 .create_element2("spirvcapabilities")
                 .with_opt_attribute("comment", comment.as_ref())
-                .write_children(capabilities),
+                .write_children(capabilities.as_slice()),
         }
     }
 }
@@ -376,7 +394,7 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
             .with_opt_attribute("noautovalidity", self.no_auto_validity.as_ref())
             .with_opt_attribute("externsync", self.extern_sync.as_ref())
             .with_opt_attribute("objecttype", self.object_type.as_ref())
-            .write_inner_content_(|writer| write_tokens(self.to_tokens_vector(), writer))
+            .write_tokens(self)
     }
 }
 
@@ -459,9 +477,7 @@ impl<'a> IntoXMLElement for GuardedDefine<'a> {
             .with_fmt_attribute("name", self.name)
             .with_opt_attribute("requires", self.requires.as_ref())
             .with_opt_attribute("comment", self.comment.as_ref())
-            .write_inner_content_(|writer| {
-                write_tokens(self.code.iter().cloned().map(VkXMLToken::C), writer)
-            })
+            .write_tokens(self.code.as_slice())
     }
 }
 
@@ -472,7 +488,7 @@ impl<'a> IntoXMLElement for MacroDefine<'a> {
         element
             .with_opt_attribute("requires", self.requires.as_ref())
             .with_opt_attribute("comment", self.comment)
-            .write_inner_content_(|writer| write_tokens(self.to_tokens_vector(), writer))
+            .write_tokens(self)
     }
 }
 
@@ -484,7 +500,7 @@ impl<'a> IntoXMLElement for BaseTypeType<'a> {
     }
 
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
-        element.write_inner_content_(|writer| write_tokens(self.to_tokens_vector(), writer))
+        element.write_tokens(self)
     }
 }
 
@@ -496,22 +512,9 @@ impl<'a> IntoXMLElement for BitmaskType<'a> {
     }
 
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
-        let Self {
-            name,
-            is_64bits: _,
-            has_bitvalues: _,
-        } = self;
         element // TODO requires / bitvalues
             .with_opt_attribute("bitvalues", self.bitvalues())
-            .write_inner_content_(|writer| {
-                writer.write_event(Event::Text(BytesText::new("typedef ")))?;
-                writer
-                    .create_element2("type")
-                    .write_escaped_text(self.type_name())?;
-                writer.write_event(Event::Text(BytesText::new(" ")))?;
-                writer.create_element2("name").write_escaped_text(name)?;
-                writer.write_event(Event::Text(BytesText::new(";")))
-            })
+            .write_tokens(self)
     }
 }
 
@@ -524,25 +527,15 @@ impl<'a> IntoXMLElement for HandleType<'a> {
 
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         let Self {
-            name,
-            handle_kind,
+            name: _,
+            handle_kind: _,
             obj_type_enum,
             parent,
         } = self;
         element
             .with_opt_attribute("parent", parent.as_ref())
             .with_fmt_attribute("objtypeenum", obj_type_enum)
-            .write_inner_content_(|writer| {
-                writer
-                    .create_element2("type")
-                    .write_text_content(BytesText::new(match handle_kind {
-                        HandleKind::Dispatch => "VK_DEFINE_HANDLE",
-                        HandleKind::NoDispatch => "VK_DEFINE_NON_DISPATCHABLE_HANDLE",
-                    }))?;
-                writer.write_event(Event::Text(BytesText::new("(")))?;
-                writer.create_element2("name").write_escaped_text(name)?;
-                writer.write_event(Event::Text(BytesText::new(")")))
-            })
+            .write_tokens(self)
     }
 }
 
@@ -569,7 +562,7 @@ impl<'a> IntoXMLElement for FnPtrType<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
             .with_opt_attribute("requires", self.requires)
-            .write_inner_content_(|writer| write_tokens(self.to_tokens_vector(), writer))
+            .write_tokens(self)
     }
 }
 
@@ -600,7 +593,7 @@ impl<'a> IntoXMLElement for StructType<'a> {
             .with_opt_attribute("allowduplicate", allow_duplicate.map(|b| b.to_string()))
             .with_opt_attribute("requires", requires.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(members)
+            .write_children(members.as_slice())
     }
 }
 
@@ -622,7 +615,7 @@ impl<'a> IntoXMLElement for UnionType<'a> {
             .with_fmt_attribute("name", name)
             .with_opt_attribute("returnedonly", returned_only.map(|b| b.to_string()))
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(members)
+            .write_children(members.as_slice())
     }
 }
 
@@ -660,20 +653,13 @@ impl<'a> IntoXMLElement for Enums<'a> {
             .with_opt_attribute("bitwidth", bit_width.as_ref())
             .with_opt_attribute("comment", comment.as_ref());
         match values {
-            EnumsValues::Constants(constants) => elem.write_children(constants),
+            EnumsValues::Constants(constants) => elem.write_children(constants.as_slice()),
             EnumsValues::Enum(values, unused) => elem
                 .with_fmt_attribute("type", "enum")
-                .write_inner_content_(|writer| {
-                    for value in values.iter() {
-                        value.write_xml(writer)?;
-                    }
-                    unused
-                        .as_ref()
-                        .map_or(Ok(()), |unused| unused.write_xml(writer))
-                }),
+                .write_children((values.as_slice(), unused.as_ref())),
             EnumsValues::Bitmask(bitmasks) => elem
                 .with_fmt_attribute("type", "bitmask")
-                .write_children(bitmasks),
+                .write_children(bitmasks.as_slice()),
         }
     }
 
@@ -778,7 +764,7 @@ impl<'a> IntoXMLElement for Format<'a> {
             .with_opt_attribute("packed", packed.as_ref())
             .with_opt_attribute("compressed", compressed.as_ref())
             .with_opt_attribute("chroma", chroma.as_ref())
-            .write_children(children)
+            .write_children(children.as_slice())
     }
 
     const TAG: &'static str = "format";
@@ -846,15 +832,11 @@ impl<'a> IntoXMLElement for Command<'a> {
             .with_opt_attribute("videocoding", video_coding.as_ref())
             .with_opt_attribute("renderpass", renderpass.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
-            .write_inner_content_(|writer| {
-                proto.write_xml(writer)?;
-                for param in params.iter() {
-                    param.write_xml(writer)?;
-                }
-                implicit_extern_sync_params
-                    .as_ref()
-                    .map_or(Ok(()), |t| t.write_xml(writer))
-            })
+            .write_children((
+                proto,
+                params.as_slice(),
+                implicit_extern_sync_params.as_ref(),
+            ))
     }
 
     const TAG: &'static str = "command";
@@ -901,7 +883,7 @@ impl<'a> IntoXMLElement for ImplicitExternSyncParam<'a> {
 impl<'a> IntoXMLElement for ImplicitExternSyncParams<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         let ImplicitExternSyncParams { params } = self;
-        element.write_children(params)
+        element.write_children(params.as_slice())
     }
 
     const TAG: &'static str = "implicitexternsyncparams";
@@ -954,7 +936,7 @@ impl<'a> IntoXMLElement for Extension<'a> {
             .with_opt_attribute("provisional", provisional.as_ref())
             .with_opt_attribute("specialuse", special_use.as_ref().map(|d| d.join(",")))
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(requires)
+            .write_children(requires.as_slice())
     }
 
     const TAG: &'static str = "extension";
@@ -972,7 +954,7 @@ impl<'a> IntoXMLElement for PseudoExtension<'a> {
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("supported", supported)
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(requires)
+            .write_children(requires.as_slice())
     }
 
     const TAG: &'static str = "extension";
@@ -990,7 +972,7 @@ impl<'a> IntoXMLElement for Require<'a> {
             .with_opt_attribute("feature", feature.as_ref())
             .with_opt_attribute("extension", extension.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(values)
+            .write_children(values.as_slice())
     }
 
     const TAG: &'static str = "require";
@@ -1058,7 +1040,7 @@ impl<'a> IntoXMLElement for Feature<'a> {
             .with_fmt_attribute("api", api)
             .with_fmt_attribute("number", number)
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(requires)
+            .write_children(requires.as_slice())
     }
 
     const TAG: &'static str = "feature";
@@ -1073,12 +1055,7 @@ impl<'a> IntoXMLElement for SpirvExtension<'a> {
         } = self;
         element
             .with_fmt_attribute("name", name)
-            .write_inner_content_(|writer| {
-                if let Some(ver) = enable_version {
-                    ver.write_xml(writer)?;
-                }
-                enable_extension.write_xml(writer)
-            })
+            .write_children((enable_version.as_ref(), enable_extension))
     }
 
     const TAG: &'static str = "spirvextension";
@@ -1089,7 +1066,7 @@ impl<'a> IntoXMLElement for SpirvCapability<'a> {
         let SpirvCapability { name, enables } = self;
         element
             .with_fmt_attribute("name", name)
-            .write_children(enables)
+            .write_children(enables.as_slice())
     }
 
     const TAG: &'static str = "spirvcapability";

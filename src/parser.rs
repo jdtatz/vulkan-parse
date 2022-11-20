@@ -1048,12 +1048,39 @@ impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for HandleType<'a> {
     }
 }
 
+impl<'t, 'a: 't> IntoVkXMLTokens<'t> for HandleType<'a> {
+    fn to_tokens(&'t self, tokens: &mut Vec<VkXMLToken<'t>>) {
+        tokens.extend([
+            VkXMLToken::TextTag { name: "type", text: self.handle_kind.into() },
+            VkXMLToken::C(Token::LParen),
+            VkXMLToken::TextTag { name: "name", text: self.name },
+            VkXMLToken::C(Token::RParen),
+        ]);
+    }
+}
+
 impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for BitmaskType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
     fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_bitmask(tokens)
+    }
+}
+
+impl<'t, 'a: 't> IntoVkXMLTokens<'t> for BitmaskType<'a> {
+    fn to_tokens(&'t self, tokens: &mut Vec<VkXMLToken<'t>>) {
+        let ty_name = if self.is_64bits {
+            "VkFlags64"
+        } else {
+            "VkFlags"
+        };
+        tokens.extend([
+            VkXMLToken::C(Token::TypeDef),
+            VkXMLToken::TextTag { name: "type", text: ty_name },
+            VkXMLToken::TextTag { name: "name", text: self.name },
+            VkXMLToken::C(Token::SemiColon),
+        ]);
     }
 }
 

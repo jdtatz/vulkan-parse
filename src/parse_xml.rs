@@ -297,24 +297,9 @@ impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node,
     }
 }
 
-macro_rules! tuple_impl {
-    ( $( $name:ident )* ) => {
-        impl<'node, 'input: 'node, $($name: 'node + ParseChildren<'node, 'input>),*> ParseChildren<'node, 'input> for ($($name,)*)
-        {
-            #[allow(unused_variables)]
-            fn from_children<I: Iterator<Item=Node<'node, 'input>>>(it: &mut core::iter::Peekable<I>, parent_id: NodeId) -> ParseResult<Self> {
-                Ok(($($name::from_children(it, parent_id)?,)*))
-            }
-        }
-    };
-}
-
-macro_rules! tuple_impls {
-    () => { tuple_impl!{} };
-    ( $head:ident $( $tail:ident )* ) => {
-        tuple_impls!{ $($tail)* }
-        tuple_impl!{$head $($tail)* }
+#[impl_trait_for_tuples::impl_for_tuples(4)]
+impl<'node, 'input: 'node> ParseChildren<'node, 'input> for Tuple {
+    fn from_children<I: Iterator<Item=Node<'node, 'input>>>(it: &mut core::iter::Peekable<I>, parent_id: NodeId) -> ParseResult<Self> {
+        Ok(for_tuples!( (#( Tuple::from_children(it, parent_id)? ),* )) )
     }
 }
-
-tuple_impls! { T1 T2 T3 T4 T5 T6 }
