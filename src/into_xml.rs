@@ -114,7 +114,7 @@ trait ElementWriterExt<'a, W: Write>: Sized {
     where
         F: FnOnce(&mut Writer<W>) -> Result;
 
-    fn write_tokens<'t, T: ?Sized + IntoVkXMLTokens<'t>>(self, value: &T) -> Result {
+    fn write_tokens<'t, T: IntoVkXMLTokens<'t>>(self, value: T) -> Result {
         self.write_inner_content_(|writer| write_tokens(value.to_tokens_vector(), writer))
     }
 

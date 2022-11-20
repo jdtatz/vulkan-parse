@@ -382,6 +382,12 @@ pub enum Token<'a> {
     Literal(&'a str),
 }
 
+impl<'a> From<Constant> for Token<'a> {
+    fn from(value: Constant) -> Self {
+        Token::Constant(value)
+    }
+}
+
 impl<'a> Token<'a> {
     #[must_use]
     pub fn from_literal(s: &str) -> Option<Self> {
