@@ -1,4 +1,7 @@
-use std::num::{NonZeroU8, ParseIntError};
+use std::{
+    num::{NonZeroU8, ParseIntError},
+    str::FromStr,
+};
 
 use roxmltree::Node;
 
@@ -151,10 +154,10 @@ impl<'a, 'input> Parse<'a, 'input> for ConstantEnum<'a> {
 #[derive(Debug)]
 struct RadixInt(i64);
 
-impl TryFrom<&str> for RadixInt {
-    type Error = ParseIntError;
+impl FromStr for RadixInt {
+    type Err = ParseIntError;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         if let Some(hex) = value
             .strip_prefix("0x")
             .or_else(|| value.strip_prefix("0X"))
@@ -167,12 +170,18 @@ impl TryFrom<&str> for RadixInt {
     }
 }
 
+impl From<RadixInt> for i64 {
+    fn from(value: RadixInt) -> Self {
+        value.0
+    }
+}
+
 impl<'a, 'input> Parse<'a, 'input> for ValueEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
             Ok(Some(ValueEnum {
                 name: attribute(node, "name")?,
-                value: attribute::<RadixInt>(node, "value")?.0,
+                value: RadixInt::into(attribute_fs(node, "value")?),
                 comment: try_attribute(node, "comment")?,
             }))
         } else {
@@ -211,7 +220,7 @@ impl<'a, 'input> Parse<'a, 'input> for UnusedEnum<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("unused") {
             Ok(Some(UnusedEnum {
-                start: attribute::<RadixInt>(node, "start")?.0,
+                start: RadixInt::into(attribute_fs(node, "start")?),
                 comment: try_attribute(node, "comment")?,
             }))
         } else {
