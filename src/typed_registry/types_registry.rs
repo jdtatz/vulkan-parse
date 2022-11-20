@@ -10,8 +10,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, parse_children, text_value, tokenize, try_attribute, try_attribute_fs,
-    try_attribute_sep, Expression, Parse, ParseResult, Token, TryFromTokens, TypeSpecifier,
+    attribute, parse_children, tokenize, try_attribute, try_attribute_fs, try_attribute_sep,
+    Expression, Parse, ParseResult, Token, TryFromTokens, TypeSpecifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -478,7 +478,9 @@ pub struct HandleType<'a> {
     pub parent: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::IntoStaticStr, strum::Display,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum HandleKind {
     #[strum(serialize = "VK_DEFINE_HANDLE")]
@@ -701,47 +703,20 @@ impl<'a, 'input> Parse<'a, 'input> for BaseTypeType<'a> {
 
 impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let ty_node = node
-            .first_element_child()
-            .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?;
-        let name_node = node
-            .last_element_child()
-            .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?;
-
-        let ty_name = text_value(ty_node)?;
-        let is_64bits = match ty_name {
-            "VkFlags" => false,
-            "VkFlags64" => true,
-            #[cfg(debug_assertions)]
-            s => todo!(
-                "Unexpected <type category=\"bitmask\"><type>...</type> of {:?}",
-                s
-            ),
-            #[cfg(not(debug_assertions))]
-            _ => return Ok(None),
-        };
         Ok(Some(BitmaskType {
-            name: text_value(name_node)?,
-            is_64bits,
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
+            ..TryFromTokens::try_from_node(node)?
         }))
     }
 }
 
 impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let ty_node = node
-            .first_element_child()
-            .ok_or_else(|| crate::ErrorKind::MissingChildElement("type", node.id()))?;
-        let name_node = node
-            .last_element_child()
-            .ok_or_else(|| crate::ErrorKind::MissingChildElement("name", node.id()))?;
         Ok(Some(HandleType {
-            name: text_value(name_node)?,
-            handle_kind: text_value(ty_node)?,
             obj_type_enum: attribute(node, "objtypeenum")?,
             parent: try_attribute(node, "parent")?,
+            ..TryFromTokens::try_from_node(node)?
         }))
     }
 }

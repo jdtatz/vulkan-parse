@@ -202,19 +202,6 @@ where
         .ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
 }
 
-// Generic node text getter with conv
-pub(crate) fn text_value<'a, 'input, T: 'a + TryFrom<&'a str>>(
-    node: Node<'a, 'input>,
-) -> ParseResult<T>
-where
-    T::Error: 'static + std::error::Error,
-{
-    node.text()
-        .ok_or_else(|| ErrorKind::EmptyElement(node.id()))?
-        .try_into()
-        .map_err(|e| ErrorKind::TextValueError(Box::new(e), node.id()))
-}
-
 pub(crate) trait Parse<'a, 'input>: Sized {
     fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>>;
     fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {

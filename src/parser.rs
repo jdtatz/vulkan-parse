@@ -5,8 +5,9 @@ use std::{
 };
 
 use crate::{
-    lexer::tokenize, ArrayLength, BaseTypeType, Constant, ErrorKind, FieldLike, FieldLikeSizing,
-    FnPtrType, MacroDefine, MacroDefineValue, ParseResult, PointerKind, Token,
+    lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, ErrorKind, FieldLike,
+    FieldLikeSizing, FnPtrType, HandleKind, HandleType, MacroDefine, MacroDefineValue, ParseResult,
+    PointerKind, Token,
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -708,6 +709,32 @@ peg::parser! {
             "void" { None }
             / params:(typed_tag(<identifier()>) ** ",") { Some(params) }
           ) ")" ";" { FnPtrType { name, return_type_name, return_type_pointer_kind, params, requires: None } }
+
+        rule dispatchable_handle_kind() -> HandleKind
+          = quiet!{[VkXMLToken::TextTag { name: "type", text: "VK_DEFINE_HANDLE" }] { HandleKind::Dispatch }}
+          / expected!("<type>VK_DEFINE_HANDLE</type>")
+
+        rule non_dispatchable_handle_kind() -> HandleKind
+          = quiet!{[VkXMLToken::TextTag { name: "type", text: "VK_DEFINE_NON_DISPATCHABLE_HANDLE" }] { HandleKind::NoDispatch }}
+          / expected!("<type>VK_DEFINE_NON_DISPATCHABLE_HANDLE</type>")
+
+        rule handle_kind() -> HandleKind = dispatchable_handle_kind() / non_dispatchable_handle_kind()
+
+        /// <type category="handle">
+        pub rule type_handle() -> HandleType<'a>
+          = handle_kind:handle_kind() "(" name:name_tag() ")" { HandleType { name, handle_kind, obj_type_enum: "", parent: None } }
+
+        rule bitmask_flags() -> bool
+            = quiet!{[VkXMLToken::TextTag { name: "type", text: "VkFlags" }] { false }}
+            / expected!("<type>VkFlags</type>")
+
+        rule bitmask64_flags() -> bool
+            = quiet!{[VkXMLToken::TextTag { name: "type", text: "VkFlags64" }] { true }}
+            / expected!("<type>VkFlags64</type>")
+
+        /// <type category="bitmask">
+        pub rule type_bitmask() -> BitmaskType<'a>
+          = "typedef" is_64bits:(bitmask_flags() / bitmask64_flags()) name:name_tag() ";" { BitmaskType {name, is_64bits, has_bitvalues: false } }
     }
 }
 
@@ -1009,6 +1036,24 @@ impl<'s, 'a: 's> IntoVkXMLTokens<'s> for &'s FnPtrType<'a> {
         }
         tokens.push(VkXMLToken::C(Token::RParen));
         tokens.push(VkXMLToken::C(Token::SemiColon));
+    }
+}
+
+impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for HandleType<'a> {
+    const PARSING_MACROS: bool = false;
+    const OBJC_COMPAT: bool = false;
+
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+        c_with_vk_ext::type_handle(tokens)
+    }
+}
+
+impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for BitmaskType<'a> {
+    const PARSING_MACROS: bool = false;
+    const OBJC_COMPAT: bool = false;
+
+    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+        c_with_vk_ext::type_bitmask(tokens)
     }
 }
 
