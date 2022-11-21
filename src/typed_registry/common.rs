@@ -214,11 +214,8 @@ impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T>
 impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
     for CommentendChildren<'node, T>
 {
-    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
-        it: &mut core::iter::Peekable<I>,
-        parent_id: roxmltree::NodeId,
-    ) -> ParseResult<Self> {
-        ParseChildren::from_children(it, parent_id).map(CommentendChildren)
+    fn from_children(it: &mut crate::PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+        ParseChildren::from_children(it).map(CommentendChildren)
     }
 }
 

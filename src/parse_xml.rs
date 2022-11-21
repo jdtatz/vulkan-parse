@@ -1,4 +1,9 @@
-use std::{fmt, str::FromStr};
+use std::{
+    fmt,
+    iter::{Filter, Peekable},
+    ops::{Deref, DerefMut},
+    str::FromStr,
+};
 
 pub use roxmltree::Document;
 use roxmltree::{Node, NodeId};
@@ -220,11 +225,49 @@ pub fn parse_registry<'a, 'input: 'a>(
     Registry::parse(root).map_err(|kind| Error { kind, document })
 }
 
+fn node_is_element(node: &Node) -> bool {
+    node.is_element()
+}
+
+type NodeFilterFn = for<'a, 'input, 'b> fn(&'b Node<'a, 'input>) -> bool;
+type PeekableChildrenElementsIter<'a, 'input> =
+    Peekable<Filter<roxmltree::Children<'a, 'input>, NodeFilterFn>>;
+
+#[derive(Debug, Clone)]
+pub(crate) struct PeekableChildrenElements<'a, 'input> {
+    iter: PeekableChildrenElementsIter<'a, 'input>,
+    pub parent_id: NodeId,
+}
+
+impl<'a, 'input: 'a> From<Node<'a, 'input>> for PeekableChildrenElements<'a, 'input> {
+    fn from(value: Node<'a, 'input>) -> Self {
+        let filter_children: Filter<_, NodeFilterFn> = value.children().filter(node_is_element);
+        Self {
+            iter: filter_children.peekable(),
+            parent_id: value.id(),
+        }
+    }
+}
+
+impl<'a, 'input: 'a> Deref for PeekableChildrenElements<'a, 'input> {
+    type Target = PeekableChildrenElementsIter<'a, 'input>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.iter
+    }
+}
+
+impl<'a, 'input: 'a> DerefMut for PeekableChildrenElements<'a, 'input> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.iter
+    }
+}
+
 trait PeekableExt<I: Iterator> {
     fn next_if_some<R>(&mut self, func: impl FnOnce(&I::Item) -> Option<R>) -> Option<R>;
 }
 
-impl<I: Iterator> PeekableExt<I> for core::iter::Peekable<I> {
+impl<I: Iterator> PeekableExt<I> for Peekable<I> {
     fn next_if_some<R>(
         &mut self,
         func: impl FnOnce(&<I as Iterator>::Item) -> Option<R>,
@@ -239,17 +282,14 @@ impl<I: Iterator> PeekableExt<I> for core::iter::Peekable<I> {
 }
 
 pub(crate) trait ParseChildren<'node, 'input: 'node>: 'node + Sized {
-    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
-        it: &mut core::iter::Peekable<I>,
-        parent_id: NodeId,
-    ) -> ParseResult<Self>;
+    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self>;
 }
 
 pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node, 'input>>(
     node: Node<'node, 'input>,
 ) -> ParseResult<T> {
-    let mut it = node.children().filter(Node::is_element).peekable();
-    let res = T::from_children(&mut it, node.id())?;
+    let mut it = node.into();
+    let res = T::from_children(&mut it)?;
     if let Some(n) = it.next() {
         Err(ErrorKind::NoMatch(n.id()))
     } else {
@@ -258,13 +298,10 @@ pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node, 'inpu
 }
 
 impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input> for T {
-    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
-        it: &mut core::iter::Peekable<I>,
-        parent_id: NodeId,
-    ) -> ParseResult<Self> {
+    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
         // FIXME replace "$" with either a way of propagatting the tag name from T or introduce a new ErrorKind
         it.next().map_or(
-            Err(ErrorKind::MissingChildElement("$", parent_id)),
+            Err(ErrorKind::MissingChildElement("$", it.parent_id)),
             T::parse,
         )
     }
@@ -273,10 +310,7 @@ impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node,
 impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
     for Option<T>
 {
-    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
-        it: &mut core::iter::Peekable<I>,
-        _parent_id: NodeId,
-    ) -> ParseResult<Self> {
+    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
         it.next_if_some(|item| T::try_parse(*item).transpose())
             .transpose()
     }
@@ -285,10 +319,7 @@ impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node,
 impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
     for Vec<T>
 {
-    fn from_children<I: Iterator<Item = Node<'node, 'input>>>(
-        it: &mut core::iter::Peekable<I>,
-        _parent_id: NodeId,
-    ) -> ParseResult<Self> {
+    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
         let mut out = Vec::new();
         while let Some(v) = it.next_if_some(|item| T::try_parse(*item).transpose()) {
             out.push(v?);
@@ -299,7 +330,7 @@ impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node,
 
 #[impl_trait_for_tuples::impl_for_tuples(4)]
 impl<'node, 'input: 'node> ParseChildren<'node, 'input> for Tuple {
-    fn from_children<I: Iterator<Item=Node<'node, 'input>>>(it: &mut core::iter::Peekable<I>, parent_id: NodeId) -> ParseResult<Self> {
-        Ok(for_tuples!( (#( Tuple::from_children(it, parent_id)? ),* )) )
+    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+        Ok(for_tuples!( (#( Tuple::from_children(it)? ),* )))
     }
 }
