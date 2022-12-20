@@ -416,6 +416,29 @@ impl<'a> FromIterator<Token<'a>> for VkXMLTokens<'a> {
     }
 }
 
+fn vk_token_flat_map<'a, 'input: 'a>(
+    n: roxmltree::Node<'a, 'input>,
+    parsing_macros: bool,
+    objc_compat: bool,
+) -> impl IntoIterator<Item = ParseResult<VkXMLToken<'a>>> {
+    // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
+    let text = n.text().unwrap_or("");
+    if n.is_element() {
+        vec![Ok(VkXMLToken::TextTag {
+            name: (n.tag_name().name()),
+            text: (text),
+        })]
+    } else {
+        tokenize(text, parsing_macros, objc_compat)
+            .into_iter()
+            .map(|r| {
+                r.map(VkXMLToken::C)
+                    .map_err(|e| ErrorKind::LexerError(e, n.id()))
+            })
+            .collect()
+    }
+}
+
 fn vk_tokenize<'a, 'input: 'a>(
     node: roxmltree::Node<'a, 'input>,
     parsing_macros: bool,
@@ -423,24 +446,7 @@ fn vk_tokenize<'a, 'input: 'a>(
 ) -> ParseResult<VkXMLTokens<'a>> {
     node.children()
         .filter(|n| n.is_element() || n.is_text())
-        .flat_map(|n| {
-            // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
-            let text = n.text().unwrap_or("");
-            if n.is_element() {
-                vec![Ok(VkXMLToken::TextTag {
-                    name: (n.tag_name().name()),
-                    text: (text),
-                })]
-            } else {
-                tokenize(text, parsing_macros, objc_compat)
-                    .into_iter()
-                    .map(|r| {
-                        r.map(VkXMLToken::C)
-                            .map_err(|e| ErrorKind::LexerError(e, n.id()))
-                    })
-                    .collect()
-            }
-        })
+        .flat_map(|n| vk_token_flat_map(n, parsing_macros, objc_compat))
         .collect()
 }
 
@@ -461,14 +467,26 @@ impl<'a> peg::Parse for VkXMLTokens<'a> {
 
 pub type ParseError = peg::error::ParseError<<VkXMLTokens<'static> as peg::Parse>::PositionRepr>;
 
-pub trait TryFromTokens<'a, 'input: 'a>: 'a + Sized {
+pub trait TryFromTokens<'a>: 'a + Sized {
     const PARSING_MACROS: bool;
     const OBJC_COMPAT: bool;
 
     fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError>;
-    fn try_from_node(node: roxmltree::Node<'a, 'input>) -> Result<Self, crate::ErrorKind> {
-        let tokens = vk_tokenize(node, Self::PARSING_MACROS, Self::OBJC_COMPAT)?;
-        Self::try_from_tokens(&tokens).map_err(|e| crate::ErrorKind::PegParsingError(e, node.id()))
+    fn try_from_elements<'input: 'a, I: IntoIterator<Item = roxmltree::Node<'a, 'input>>>(
+        elements: I,
+        parent_id: roxmltree::NodeId,
+    ) -> ParseResult<Self> {
+        let tokens = elements
+            .into_iter()
+            .flat_map(|n| vk_token_flat_map(n, Self::PARSING_MACROS, Self::OBJC_COMPAT))
+            .collect::<ParseResult<_>>()?;
+        Self::try_from_tokens(&tokens).map_err(|e| crate::ErrorKind::PegParsingError(e, parent_id))
+    }
+    fn try_from_node<'input: 'a>(node: roxmltree::Node<'a, 'input>) -> ParseResult<Self> {
+        Self::try_from_elements(
+            node.children().filter(|n| n.is_element() || n.is_text()),
+            node.id(),
+        )
     }
 }
 
@@ -512,7 +530,7 @@ impl<'peg, 'a: 'peg> peg::ParseSlice<'peg> for VkXMLTokens<'a> {
 /// C is not a context-free languge and requires building a symbol table of typedefs at parse time to resolve ambigutites with cast expressions
 pub(crate) fn is_typedef_name(name: &str) -> bool {
     // FIXME: actually build a symbol table as we go that is already filled with the standard typedefs (size_t, uint32_t, ...),
-    name.ends_with("_t") || name.starts_with("Vk")
+    name.ends_with("_t") || name.starts_with("Vk") || name.starts_with("PFN_vk")
 }
 
 peg::parser! {
@@ -918,7 +936,7 @@ impl<'t, 's, 'a: 't + 's, const NAME_IS_TAG: bool> IntoVkXMLTokens<'t>
     }
 }
 
-impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for FieldLike<'a> {
+impl<'a> TryFromTokens<'a> for FieldLike<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
@@ -957,7 +975,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FieldLike<'a> {
     }
 }
 
-impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for BaseTypeType<'a> {
+impl<'a> TryFromTokens<'a> for BaseTypeType<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = true;
 
@@ -976,7 +994,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ BaseTypeType<'a> {
     }
 }
 
-impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for MacroDefine<'a> {
+impl<'a> TryFromTokens<'a> for MacroDefine<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = false;
 
@@ -1009,7 +1027,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ MacroDefine<'a> {
     }
 }
 
-impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for FnPtrType<'a> {
+impl<'a> TryFromTokens<'a> for FnPtrType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
@@ -1040,7 +1058,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FnPtrType<'a> {
     }
 }
 
-impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for HandleType<'a> {
+impl<'a> TryFromTokens<'a> for HandleType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
@@ -1055,7 +1073,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ HandleType<'a> {
     }
 }
 
-impl<'a, 'input: 'a> TryFromTokens<'a, 'input> for BitmaskType<'a> {
+impl<'a> TryFromTokens<'a> for BitmaskType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 

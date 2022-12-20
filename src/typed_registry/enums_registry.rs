@@ -6,10 +6,7 @@ use std::{
 use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
-use crate::{
-    attribute, attribute_fs, parse_children, try_attribute, try_attribute_fs, Expression, Parse,
-    ParseResult,
-};
+use crate::{attribute, parse_children, try_attribute, Expression, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
@@ -110,19 +107,19 @@ pub struct UnusedEnum<'a> {
     pub comment: Option<&'a str>,
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Enums<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Enums<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Enums {
             name: attribute(node, "name")?,
-            bit_width: try_attribute_fs(node, "bitwidth")?,
+            bit_width: try_attribute(node, "bitwidth")?,
             comment: try_attribute(node, "comment")?,
             values: Parse::parse(node)?,
         }))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for EnumsValues<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for EnumsValues<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         let ty_attr = try_attribute(node, "type")?;
         match ty_attr {
             None => Ok(Some(Self::Constants(parse_children(node)?))),
@@ -136,8 +133,8 @@ impl<'a, 'input> Parse<'a, 'input> for EnumsValues<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for ConstantEnum<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for ConstantEnum<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
             Ok(Some(ConstantEnum {
                 name: attribute(node, "name")?,
@@ -176,12 +173,12 @@ impl From<RadixInt> for i64 {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for ValueEnum<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for ValueEnum<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
             Ok(Some(ValueEnum {
                 name: attribute(node, "name")?,
-                value: RadixInt::into(attribute_fs(node, "value")?),
+                value: RadixInt::into(attribute(node, "value")?),
                 comment: try_attribute(node, "comment")?,
             }))
         } else {
@@ -190,8 +187,8 @@ impl<'a, 'input> Parse<'a, 'input> for ValueEnum<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for BitmaskEnum<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for BitmaskEnum<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("enum") {
             if node.has_attribute("value") {
                 Ok(Some(BitmaskEnum::Value(Parse::parse(node)?)))
@@ -206,21 +203,21 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskEnum<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for BitPosEnum<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for BitPosEnum<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(BitPosEnum {
             name: attribute(node, "name")?,
-            bitpos: attribute_fs(node, "bitpos")?,
+            bitpos: attribute(node, "bitpos")?,
             comment: try_attribute(node, "comment")?,
         }))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for UnusedEnum<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for UnusedEnum<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("unused") {
             Ok(Some(UnusedEnum {
-                start: RadixInt::into(attribute_fs(node, "start")?),
+                start: RadixInt::into(attribute(node, "start")?),
                 comment: try_attribute(node, "comment")?,
             }))
         } else {

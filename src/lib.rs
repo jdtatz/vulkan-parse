@@ -52,9 +52,24 @@ impl<T: IntoIterator + FromIterator<<Self as IntoIterator>::Item>> Container for
 
 pub(crate) struct Seperated<V, const C: char>(pub V);
 
-impl<V: Container, const C: char> Seperated<V, C> {
-    pub fn value(self) -> V {
-        self.0
+pub(crate) type CommaSeperated<V> = Seperated<V, ','>;
+
+// Rust's orphan rules are difficult
+// impl<V, const C: char> From<Seperated<Self, C>> for V {
+//     fn from(value: Seperated<Self, C>) -> Self {
+//         value.0
+//     }
+// }
+
+impl<T, const C: char> From<Seperated<Self, C>> for Vec<T> {
+    fn from(value: Seperated<Self, C>) -> Self {
+        value.0
+    }
+}
+
+impl<T: enumflags2::BitFlag, const C: char> From<Seperated<Self, C>> for enumflags2::BitFlags<T> {
+    fn from(value: Seperated<Self, C>) -> Self {
+        value.0
     }
 }
 

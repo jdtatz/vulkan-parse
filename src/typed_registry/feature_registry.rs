@@ -1,10 +1,7 @@
 use roxmltree::Node;
 
 use super::common::{CommentendChildren, SemVarVersion};
-use crate::{
-    attribute, attribute_fs, parse_children, try_attribute, try_attribute_fs, Expression, Parse,
-    ParseResult, StdVersion,
-};
+use crate::{attribute, parse_children, try_attribute, Expression, Parse, ParseResult, StdVersion};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -94,13 +91,13 @@ pub enum RequireValueEnum<'a> {
     Bitpos(u8),
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Feature<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Feature<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("feature") {
             Ok(Some(Feature {
                 name: attribute(node, "name")?,
-                api: attribute(node, "api")?,
-                number: attribute_fs(node, "number")?,
+                api: attribute::<_, false>(node, "api")?,
+                number: attribute(node, "number")?,
                 comment: try_attribute(node, "comment")?,
                 requires: parse_children(node)?,
             }))
@@ -110,11 +107,11 @@ impl<'a, 'input> Parse<'a, 'input> for Feature<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Require<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Require<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("require") {
             Ok(Some(Require {
-                feature: try_attribute_fs(node, "feature")?,
+                feature: try_attribute(node, "feature")?,
                 extension: try_attribute(node, "extension")?,
                 comment: try_attribute(node, "comment")?,
                 values: parse_children(node)?,
@@ -125,8 +122,8 @@ impl<'a, 'input> Parse<'a, 'input> for Require<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for RequireValue<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "type" => Ok(Some(RequireValue::Type {
                 name: attribute(node, "name")?,
@@ -148,20 +145,20 @@ impl<'a, 'input> Parse<'a, 'input> for RequireValue<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for RequireValueEnum<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for RequireValueEnum<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(value) = try_attribute(node, "value")? {
             Ok(Some(RequireValueEnum::Value(value)))
         } else if let Some(alias) = try_attribute(node, "alias")? {
             Ok(Some(RequireValueEnum::Alias(alias)))
-        } else if let Some(offset) = try_attribute_fs(node, "offset")? {
+        } else if let Some(offset) = try_attribute(node, "offset")? {
             Ok(Some(RequireValueEnum::Offset {
                 // extnumber: attribute(node, "extnumber")?,
-                extnumber: try_attribute_fs(node, "extnumber")?,
+                extnumber: try_attribute(node, "extnumber")?,
                 offset,
-                direction: try_attribute(node, "dir")?,
+                direction: try_attribute::<_, false>(node, "dir")?,
             }))
-        } else if let Some(bitpos) = try_attribute_fs(node, "bitpos")? {
+        } else if let Some(bitpos) = try_attribute(node, "bitpos")? {
             Ok(Some(RequireValueEnum::Bitpos(bitpos)))
         } else {
             Ok(None)

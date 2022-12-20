@@ -1,6 +1,7 @@
 use std::{
     fmt,
-    iter::{Filter, Peekable},
+    iter::{Filter, FilterMap, Peekable},
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     str::FromStr,
 };
@@ -8,7 +9,7 @@ use std::{
 pub use roxmltree::Document;
 use roxmltree::{Node, NodeId};
 
-use crate::{Container, LexerError, ParseError, Registry, Seperated};
+use crate::{Container, LexerError, ParseError, Registry, Seperated, TryFromTokens, VkXMLTokens};
 
 #[derive(Debug)]
 pub enum ErrorKind {
@@ -16,6 +17,7 @@ pub enum ErrorKind {
     /// Empty elements are disallowed in vulkan's mixed pseudo-c/xml
     EmptyElement(NodeId),
     MissingAttribute(&'static str, NodeId),
+    UnknownAttribute(String, NodeId),
     MissingChildElement(&'static str, NodeId),
     LexerError(LexerError, NodeId),
     PegParsingError(ParseError, NodeId),
@@ -84,6 +86,12 @@ impl<'d, 'input> fmt::Display for Error<'d, 'input> {
                 key,
                 DocumentLocation(self.document, *id)
             ),
+            ErrorKind::UnknownAttribute(key, id) => write!(
+                f,
+                "Attribute {:?} was not expected in {}",
+                key,
+                DocumentLocation(self.document, *id)
+            ),
             ErrorKind::MissingChildElement(tag, id) => write!(
                 f,
                 "No child with the tag-name {:?} was found at {}",
@@ -140,8 +148,30 @@ impl<'d, 'input> std::error::Error for Error<'d, 'input> {
 
 pub(crate) type ParseResult<T> = std::result::Result<T, ErrorKind>;
 
+pub trait TryFromStr<'s, const BORROW: bool = true>: 's + Sized {
+    type Error;
+
+    fn try_from_str(s: &'s str) -> Result<Self, Self::Error>;
+}
+
+impl<'s, T: 'static + FromStr> TryFromStr<'s, false> for T {
+    type Error = <Self as FromStr>::Err;
+
+    fn try_from_str(s: &'s str) -> Result<Self, Self::Error> {
+        Self::from_str(s)
+    }
+}
+
+impl<'s, T: 's + TryFrom<&'s str>> TryFromStr<'s, true> for T {
+    type Error = <Self as TryFrom<&'s str>>::Error;
+
+    fn try_from_str(s: &'s str) -> Result<Self, Self::Error> {
+        Self::try_from(s)
+    }
+}
+
 // Generic attribute getter with conv
-pub(crate) fn try_attribute<'a, 'input, T: 'a + TryFrom<&'a str>>(
+pub(crate) fn try_attribute<'a, 'input, T: TryFromStr<'a, BORROW>, const BORROW: bool>(
     node: Node<'a, 'input>,
     attr: &'static str,
 ) -> ParseResult<Option<T>>
@@ -149,12 +179,12 @@ where
     T::Error: 'static + std::error::Error,
 {
     node.attribute(attr)
-        .map(TryFrom::try_from)
+        .map(TryFromStr::try_from_str)
         .transpose()
         .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node.id()))
 }
 
-pub(crate) fn attribute<'a, 'input, T: 'a + TryFrom<&'a str>>(
+pub(crate) fn attribute<'a, 'input, T: TryFromStr<'a, BORROW>, const BORROW: bool>(
     node: Node<'a, 'input>,
     attr: &'static str,
 ) -> ParseResult<T>
@@ -164,52 +194,35 @@ where
     try_attribute(node, attr)?.ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
 }
 
-// attribute getter+conv for primatives without TryFrom<&'a str>
-pub(crate) fn try_attribute_fs<T: FromStr>(node: Node, attr: &'static str) -> ParseResult<Option<T>>
+pub(crate) fn optional_attribute<'xml, T: TryFromStr<'xml, BORROW>, const BORROW: bool>(
+    value: Option<&'xml str>,
+    attr: &'static str,
+    node_id: roxmltree::NodeId,
+) -> ParseResult<Option<T>>
 where
-    T::Err: 'static + std::error::Error,
+    T::Error: 'static + std::error::Error,
 {
-    node.attribute(attr)
-        .map(FromStr::from_str)
+    value
+        .map(TryFromStr::try_from_str)
         .transpose()
-        .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node.id()))
+        .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node_id))
 }
 
-pub(crate) fn attribute_fs<T: FromStr>(node: Node, attr: &'static str) -> ParseResult<T>
-where
-    T::Err: 'static + std::error::Error,
-{
-    try_attribute_fs(node, attr)?.ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
-}
-
-// attribute getter+conv for container-like types with a seperator
-pub(crate) fn try_attribute_sep<'a, 'input, V: 'a + Container, const C: char>(
-    node: Node<'a, 'input>,
+pub(crate) fn required_attribute<'xml, T: TryFromStr<'xml, BORROW>, const BORROW: bool>(
+    value: Option<&'xml str>,
     attr: &'static str,
-) -> ParseResult<Option<V>>
+    node_id: roxmltree::NodeId,
+) -> ParseResult<T>
 where
-    V::Item: 'a + TryFrom<&'a str>,
-    <V::Item as TryFrom<&'a str>>::Error: 'static + std::error::Error,
+    T::Error: 'static + std::error::Error,
 {
-    Ok(try_attribute::<Seperated<_, C>>(node, attr)?.map(Seperated::value))
+    optional_attribute(value, attr, node_id)?
+        .ok_or_else(|| ErrorKind::MissingAttribute(attr, node_id))
 }
 
-#[allow(dead_code)]
-pub(crate) fn attribute_sep<'a, 'input, V: 'a + Container, const C: char>(
-    node: Node<'a, 'input>,
-    attr: &'static str,
-) -> ParseResult<V>
-where
-    V::Item: 'a + TryFrom<&'a str>,
-    <V::Item as TryFrom<&'a str>>::Error: 'static + std::error::Error,
-{
-    try_attribute_sep::<V, C>(node, attr)?
-        .ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
-}
-
-pub(crate) trait Parse<'a, 'input>: Sized {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>>;
-    fn parse(node: Node<'a, 'input>) -> ParseResult<Self> {
+pub(crate) trait Parse<'a>: Sized {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>>;
+    fn parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Self> {
         match Self::try_parse(node) {
             Ok(Some(v)) => Ok(v),
             Ok(None) => Err(ErrorKind::NoMatch(node.id())),
@@ -226,7 +239,7 @@ pub fn parse_registry<'a, 'input: 'a>(
 }
 
 fn node_is_element(node: &Node) -> bool {
-    node.is_element()
+    node.is_element() || (node.is_text() && node.text().map_or(false, |s| !s.trim().is_empty()))
 }
 
 type NodeFilterFn = for<'a, 'input, 'b> fn(&'b Node<'a, 'input>) -> bool;
@@ -234,7 +247,7 @@ type PeekableChildrenElementsIter<'a, 'input> =
     Peekable<Filter<roxmltree::Children<'a, 'input>, NodeFilterFn>>;
 
 #[derive(Debug, Clone)]
-pub(crate) struct PeekableChildrenElements<'a, 'input> {
+pub struct PeekableChildrenElements<'a, 'input> {
     iter: PeekableChildrenElementsIter<'a, 'input>,
     pub parent_id: NodeId,
 }
@@ -281,11 +294,13 @@ impl<I: Iterator> PeekableExt<I> for Peekable<I> {
     }
 }
 
-pub(crate) trait ParseChildren<'node, 'input: 'node>: 'node + Sized {
-    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self>;
+pub trait ParseChildren<'node>: 'node + Sized {
+    fn from_children<'input: 'node>(
+        it: &mut PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self>;
 }
 
-pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node, 'input>>(
+pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node>>(
     node: Node<'node, 'input>,
 ) -> ParseResult<T> {
     let mut it = node.into();
@@ -297,8 +312,10 @@ pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node, 'inpu
     }
 }
 
-impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input> for T {
-    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+impl<'node, T: 'node + Parse<'node>> ParseChildren<'node> for T {
+    fn from_children<'input: 'node>(
+        it: &mut PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
         // FIXME replace "$" with either a way of propagatting the tag name from T or introduce a new ErrorKind
         it.next().map_or(
             Err(ErrorKind::MissingChildElement("$", it.parent_id)),
@@ -307,19 +324,19 @@ impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node,
     }
 }
 
-impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
-    for Option<T>
-{
-    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+impl<'node, T: 'node + Parse<'node>> ParseChildren<'node> for Option<T> {
+    fn from_children<'input: 'node>(
+        it: &mut PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
         it.next_if_some(|item| T::try_parse(*item).transpose())
             .transpose()
     }
 }
 
-impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
-    for Vec<T>
-{
-    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+impl<'node, T: 'node + Parse<'node>> ParseChildren<'node> for Vec<T> {
+    fn from_children<'input: 'node>(
+        it: &mut PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
         let mut out = Vec::new();
         while let Some(v) = it.next_if_some(|item| T::try_parse(*item).transpose()) {
             out.push(v?);
@@ -328,9 +345,22 @@ impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node,
     }
 }
 
+impl<'node> ParseChildren<'node> for &'node str {
+    fn from_children<'input: 'node>(
+        it: &mut PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
+        it.next().map_or(
+            Err(ErrorKind::MissingChildElement("$text", it.parent_id)),
+            |n| n.text().ok_or(ErrorKind::EmptyElement(n.id())),
+        )
+    }
+}
+
 #[impl_trait_for_tuples::impl_for_tuples(4)]
-impl<'node, 'input: 'node> ParseChildren<'node, 'input> for Tuple {
-    fn from_children(it: &mut PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+impl<'node> ParseChildren<'node> for Tuple {
+    fn from_children<'input: 'node>(
+        it: &mut PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
         Ok(for_tuples!( (#( Tuple::from_children(it)? ),* )))
     }
 }

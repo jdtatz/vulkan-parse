@@ -10,8 +10,8 @@ use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, parse_children, tokenize, try_attribute, try_attribute_fs, try_attribute_sep,
-    Expression, Parse, ParseResult, Token, TryFromTokens, TypeSpecifier,
+    attribute, parse_children, tokenize, try_attribute, Expression, Parse, ParseResult, Token,
+    TryFromTokens, TypeSpecifier,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -614,8 +614,8 @@ impl<'a> ops::DerefMut for Member<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Type<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Type<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("type") {
             let category = try_attribute(node, "category")?;
             match category {
@@ -638,8 +638,8 @@ impl<'a, 'input> Parse<'a, 'input> for Type<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for RequiresType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for RequiresType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(RequiresType {
             name: attribute(node, "name")?,
             requires: try_attribute(node, "requires")?,
@@ -647,8 +647,8 @@ impl<'a, 'input> Parse<'a, 'input> for RequiresType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for IncludeType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(IncludeType {
             name: attribute(node, "name")?,
             is_local_include: node.text().map(|s| s.contains('"')),
@@ -656,8 +656,8 @@ impl<'a, 'input> Parse<'a, 'input> for IncludeType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for GuardedDefine<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for GuardedDefine<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(name) = try_attribute(node, "name")? {
             let code = node
                 .text()
@@ -676,8 +676,8 @@ impl<'a, 'input> Parse<'a, 'input> for GuardedDefine<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for MacroDefine<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for MacroDefine<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Self {
             requires: try_attribute(node, "requires")?,
             ..Self::try_from_node(node)?
@@ -685,8 +685,8 @@ impl<'a, 'input> Parse<'a, 'input> for MacroDefine<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for DefineType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(if let Some(g) = GuardedDefine::try_parse(node)? {
             Some(Self::GuardedMacro(g))
         } else {
@@ -695,14 +695,14 @@ impl<'a, 'input> Parse<'a, 'input> for DefineType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for BaseTypeType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for BaseTypeType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Self::try_from_node(node)?))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for BitmaskType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
@@ -711,8 +711,8 @@ impl<'a, 'input> Parse<'a, 'input> for BitmaskType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for HandleType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(HandleType {
             obj_type_enum: attribute(node, "objtypeenum")?,
             parent: try_attribute(node, "parent")?,
@@ -721,16 +721,16 @@ impl<'a, 'input> Parse<'a, 'input> for HandleType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for EnumType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for EnumType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(EnumType {
             name: attribute(node, "name")?,
         }))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for FnPtrType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Self {
             requires: try_attribute(node, "requires")?,
             ..Self::try_from_node(node)?
@@ -738,13 +738,13 @@ impl<'a, 'input> Parse<'a, 'input> for FnPtrType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for StructType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(StructType {
             name: attribute(node, "name")?,
-            returned_only: try_attribute_fs(node, "returnedonly")?,
-            struct_extends: try_attribute_sep::<_, ','>(node, "structextends")?,
-            allow_duplicate: try_attribute_fs(node, "allowduplicate")?,
+            returned_only: try_attribute(node, "returnedonly")?,
+            struct_extends: try_attribute(node, "structextends")?.map(crate::CommaSeperated::into),
+            allow_duplicate: try_attribute(node, "allowduplicate")?,
             members: parse_children(node)?,
             requires: try_attribute(node, "requires")?,
             comment: try_attribute(node, "comment")?,
@@ -752,26 +752,26 @@ impl<'a, 'input> Parse<'a, 'input> for StructType<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for UnionType<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for UnionType<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(UnionType {
             name: attribute(node, "name")?,
-            returned_only: try_attribute_fs(node, "returnedonly")?,
+            returned_only: try_attribute(node, "returnedonly")?,
             members: parse_children(node)?,
             comment: try_attribute(node, "comment")?,
         }))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Member<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Member<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("member") {
             Ok(Some(Member {
                 base: Parse::parse(node)?,
-                selector: try_attribute(node, "selector")?,
+                selector: try_attribute::<_, false>(node, "selector")?,
                 selection: try_attribute(node, "selection")?,
                 values: try_attribute(node, "values")?,
-                limit_type: try_attribute(node, "limittype")?,
+                limit_type: try_attribute::<_, false>(node, "limittype")?,
             }))
         } else {
             Ok(None)
@@ -779,8 +779,8 @@ impl<'a, 'input> Parse<'a, 'input> for Member<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for FieldLike<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         let dynamic_shape = try_attribute(node, "len")?
             .map(|len: &str| {
                 Ok(if let Some(latex_expr) = len.strip_prefix("latexmath:") {
@@ -800,8 +800,8 @@ impl<'a, 'input> Parse<'a, 'input> for FieldLike<'a> {
         Ok(Some(FieldLike {
             dynamic_shape,
             extern_sync: try_attribute(node, "externsync")?,
-            optional: try_attribute_fs(node, "optional")?,
-            no_auto_validity: try_attribute(node, "noautovalidity")?,
+            optional: try_attribute(node, "optional")?,
+            no_auto_validity: try_attribute::<_, false>(node, "noautovalidity")?,
             object_type: try_attribute(node, "objecttype")?,
             ..Self::try_from_node(node)?
         }))

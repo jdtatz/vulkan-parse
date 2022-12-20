@@ -4,8 +4,8 @@ use roxmltree::Node;
 
 use super::common::StdVersion;
 use crate::{
-    attribute, parse_children, try_attribute, try_attribute_fs, ErrorKind, Expression, Parse,
-    ParseResult, StdVersionParseError,
+    attribute, parse_children, try_attribute, ErrorKind, Expression, Parse, ParseResult,
+    StdVersionParseError,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,8 +100,8 @@ pub struct PropertyEnable<'a> {
     pub requires: EnableRequires<'a>,
 }
 
-impl<'a, 'input> Parse<'a, 'input> for SpirvExtension<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for SpirvExtension<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("spirvextension") {
             let mut it = node
                 .children()
@@ -123,8 +123,8 @@ impl<'a, 'input> Parse<'a, 'input> for SpirvExtension<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for SpirvCapability<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for SpirvCapability<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("spirvcapability") {
             Ok(Some(SpirvCapability {
                 name: (attribute(node, "name")?),
@@ -136,8 +136,8 @@ impl<'a, 'input> Parse<'a, 'input> for SpirvCapability<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for EnableSpirvCapability<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for EnableSpirvCapability<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(v) = VersionEnable::try_parse(node)? {
             Ok(Some(EnableSpirvCapability::Version(v)))
         } else if let Some(v) = ExtensionEnable::try_parse(node)? {
@@ -152,20 +152,20 @@ impl<'a, 'input> Parse<'a, 'input> for EnableSpirvCapability<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for VersionEnable {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(try_attribute_fs(node, "version")?.map(VersionEnable))
+impl<'a> Parse<'a> for VersionEnable {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        Ok(try_attribute(node, "version")?.map(VersionEnable))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for ExtensionEnable<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for ExtensionEnable<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(try_attribute(node, "extension")?.map(ExtensionEnable))
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for StructEnable<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for StructEnable<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(name) = try_attribute(node, "struct")? {
             Ok(Some(StructEnable {
                 name,
@@ -179,8 +179,8 @@ impl<'a, 'input> Parse<'a, 'input> for StructEnable<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for PropertyEnable<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for PropertyEnable<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(name) = try_attribute(node, "property")? {
             Ok(Some(PropertyEnable {
                 name,

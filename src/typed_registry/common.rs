@@ -201,8 +201,8 @@ impl fmt::Display for StdVersion {
     }
 }
 
-impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, T: Parse<'a>> Parse<'a> for MaybeComment<'a, T> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(v) = T::try_parse(node)? {
             Ok(Some(MaybeComment::Value(v)))
         } else {
@@ -211,16 +211,16 @@ impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for MaybeComment<'a, T>
     }
 }
 
-impl<'node, 'input: 'node, T: 'node + Parse<'node, 'input>> ParseChildren<'node, 'input>
-    for CommentendChildren<'node, T>
-{
-    fn from_children(it: &mut crate::PeekableChildrenElements<'node, 'input>) -> ParseResult<Self> {
+impl<'node, T: 'node + Parse<'node>> ParseChildren<'node> for CommentendChildren<'node, T> {
+    fn from_children<'input: 'node>(
+        it: &mut crate::PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
         ParseChildren::from_children(it).map(CommentendChildren)
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Comment<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("comment") {
             Ok(Some(Comment(node.text().unwrap_or(""))))
         } else {
@@ -229,8 +229,8 @@ impl<'a, 'input> Parse<'a, 'input> for Comment<'a> {
     }
 }
 
-impl<'a, 'input, T: Parse<'a, 'input>> Parse<'a, 'input> for DefinitionOrAlias<'a, T> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, T: Parse<'a>> Parse<'a> for DefinitionOrAlias<'a, T> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(alias) = try_attribute(node, "alias")? {
             Ok(Some(DefinitionOrAlias::Alias(Alias {
                 name: attribute(node, "name")?,

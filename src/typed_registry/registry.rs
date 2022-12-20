@@ -86,8 +86,8 @@ impl<'a> FromIterator<MaybeComment<'a, Items<'a>>> for Registry<'a> {
     }
 }
 
-impl<'a, 'input: 'a> Parse<'a, 'input> for Registry<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Registry<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("registry") {
             parse_children(node).map(Self).map(Some)
         } else {
@@ -96,8 +96,8 @@ impl<'a, 'input: 'a> Parse<'a, 'input> for Registry<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Items<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Items<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "platforms" => Ok(Some(Items::Platforms {
                 platforms: parse_children(node)?,
@@ -135,8 +135,8 @@ impl<'a, 'input> Parse<'a, 'input> for Items<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Platform<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Platform<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("platform") {
             Ok(Some(Platform {
                 name: attribute(node, "name")?,
@@ -149,8 +149,8 @@ impl<'a, 'input> Parse<'a, 'input> for Platform<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Tag<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Tag<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("tag") {
             Ok(Some(Tag {
                 name: attribute(node, "name")?,
@@ -163,8 +163,8 @@ impl<'a, 'input> Parse<'a, 'input> for Tag<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for WrappedExtension<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for WrappedExtension<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if let Some(e) = Extension::try_parse(node)? {
             Ok(Some(Self::Extension(e)))
         } else if let Some(e) = PseudoExtension::try_parse(node)? {

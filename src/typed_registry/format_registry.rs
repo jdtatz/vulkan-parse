@@ -2,9 +2,7 @@ use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use roxmltree::Node;
 
-use crate::{
-    attribute, attribute_fs, parse_children, try_attribute, try_attribute_fs, Parse, ParseResult,
-};
+use crate::{attribute, parse_children, try_attribute, Parse, ParseResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
@@ -168,18 +166,18 @@ pub enum ComponentName {
     Depth,
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Format<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Format<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("format") {
             Ok(Some(Format {
                 name: attribute(node, "name")?,
                 class: attribute(node, "class")?,
-                block_size: attribute_fs(node, "blockSize")?,
-                texels_per_block: attribute_fs(node, "texelsPerBlock")?,
-                block_extent: try_attribute_fs(node, "blockExtent")?,
-                packed: try_attribute_fs(node, "packed")?,
+                block_size: attribute(node, "blockSize")?,
+                texels_per_block: attribute(node, "texelsPerBlock")?,
+                block_extent: try_attribute(node, "blockExtent")?,
+                packed: try_attribute(node, "packed")?,
                 compressed: try_attribute(node, "compressed")?,
-                chroma: try_attribute(node, "chroma")?,
+                chroma: try_attribute::<_, false>(node, "chroma")?,
                 children: parse_children(node)?,
             }))
         } else {
@@ -188,19 +186,19 @@ impl<'a, 'input> Parse<'a, 'input> for Format<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for FormatChild<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for FormatChild<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         match node.tag_name().name() {
             "component" => Ok(Some(FormatChild::Component {
-                name: attribute(node, "name")?,
-                bits: attribute_fs(node, "bits")?,
-                numeric_format: attribute(node, "numericFormat")?,
-                plane_index: try_attribute_fs(node, "planeIndex")?,
+                name: attribute::<_, false>(node, "name")?,
+                bits: attribute(node, "bits")?,
+                numeric_format: attribute::<_, false>(node, "numericFormat")?,
+                plane_index: try_attribute(node, "planeIndex")?,
             })),
             "plane" => Ok(Some(FormatChild::Plane {
-                index: attribute_fs(node, "index")?,
-                width_divisor: attribute_fs(node, "widthDivisor")?,
-                height_divisor: attribute_fs(node, "heightDivisor")?,
+                index: attribute(node, "index")?,
+                width_divisor: attribute(node, "widthDivisor")?,
+                height_divisor: attribute(node, "heightDivisor")?,
                 compatible: attribute(node, "compatible")?,
             })),
             "spirvimageformat" => Ok(Some(FormatChild::SpirvImageFormat {

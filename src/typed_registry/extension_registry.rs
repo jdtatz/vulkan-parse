@@ -6,10 +6,7 @@ use super::{
     common::{SemVarVersion, StdVersion},
     feature_registry::Require,
 };
-use crate::{
-    attribute, parse_children, try_attribute, try_attribute_fs, try_attribute_sep, Parse,
-    ParseResult,
-};
+use crate::{attribute, parse_children, try_attribute, Parse, ParseResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -108,27 +105,29 @@ pub struct PseudoExtension<'a> {
     pub requires: Vec<Require<'a>>,
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Extension<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Extension<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("extension") {
-            if let Some(number) = try_attribute_fs(node, "number")? {
+            if let Some(number) = try_attribute(node, "number")? {
                 Ok(Some(Extension {
                     name: attribute(node, "name")?,
                     number,
-                    kind: try_attribute(node, "type")?,
-                    supported: attribute(node, "supported")?,
-                    requires_core: try_attribute_fs(node, "requiresCore")?,
-                    requires_depencies: try_attribute_sep::<_, ','>(node, "requires")?,
+                    kind: try_attribute::<_, false>(node, "type")?,
+                    supported: attribute::<_, false>(node, "supported")?,
+                    requires_core: try_attribute(node, "requiresCore")?,
+                    requires_depencies: try_attribute(node, "requires")?
+                        .map(crate::CommaSeperated::into),
                     author: try_attribute(node, "author")?,
                     contact: try_attribute(node, "contact")?,
                     promoted_to: try_attribute(node, "promotedto")?,
                     deprecated_by: try_attribute(node, "deprecatedby")?,
                     obsoleted_by: try_attribute(node, "obsoletedby")?,
-                    sort_order: try_attribute_fs(node, "sortorder")?,
+                    sort_order: try_attribute(node, "sortorder")?,
                     requires: parse_children(node)?,
                     platform: try_attribute(node, "platform")?,
-                    provisional: try_attribute_fs(node, "provisional")?,
-                    special_use: try_attribute_sep::<_, ','>(node, "specialuse")?,
+                    provisional: try_attribute(node, "provisional")?,
+                    special_use: try_attribute(node, "specialuse")?
+                        .map(crate::CommaSeperated::into),
                     comment: try_attribute(node, "comment")?,
                 }))
             } else {
@@ -140,12 +139,12 @@ impl<'a, 'input> Parse<'a, 'input> for Extension<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for PseudoExtension<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for PseudoExtension<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("extension") && !node.has_attribute("number") {
             Ok(Some(PseudoExtension {
                 name: attribute(node, "name")?,
-                supported: attribute(node, "supported")?,
+                supported: attribute::<_, false>(node, "supported")?,
                 requires: parse_children(node)?,
                 comment: try_attribute(node, "comment")?,
             }))

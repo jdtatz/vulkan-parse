@@ -3,7 +3,7 @@ use std::ops;
 use roxmltree::Node;
 
 use super::FieldLike;
-use crate::{parse_children, try_attribute, try_attribute_sep, Parse, ParseResult};
+use crate::{parse_children, try_attribute, Parse, ParseResult};
 
 /// Structured definition of a single API command (function)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,8 +187,8 @@ pub enum Task {
     Indirection,
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Proto<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Proto<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("proto") {
             Ok(Some(Proto {
                 base: Parse::parse(node)?,
@@ -199,12 +199,13 @@ impl<'a, 'input> Parse<'a, 'input> for Proto<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for CommandParam<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("param") {
             Ok(Some(CommandParam {
                 base: Parse::parse(node)?,
-                valid_structs: try_attribute_sep::<_, ','>(node, "validstructs")?,
+                valid_structs: try_attribute(node, "validstructs")?
+                    .map(crate::CommaSeperated::into),
                 stride: try_attribute(node, "stride")?,
             }))
         } else {
@@ -213,8 +214,8 @@ impl<'a, 'input> Parse<'a, 'input> for CommandParam<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParam<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for ImplicitExternSyncParam<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("param") {
             Ok(Some(Self {
                 description: node.text().unwrap_or(""),
@@ -225,8 +226,8 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParam<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for ImplicitExternSyncParams<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("implicitexternsyncparams") {
             Ok(Some(ImplicitExternSyncParams {
                 params: parse_children(node)?,
@@ -237,8 +238,8 @@ impl<'a, 'input> Parse<'a, 'input> for ImplicitExternSyncParams<'a> {
     }
 }
 
-impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
-    fn try_parse(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a> Parse<'a> for Command<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         if node.has_tag_name("command") {
             let (proto, params, implicit_extern_sync_params) = parse_children(node)?;
             Ok(Some(Command {
@@ -246,12 +247,13 @@ impl<'a, 'input> Parse<'a, 'input> for Command<'a> {
                 params,
                 implicit_extern_sync_params,
                 success_codes: try_attribute(node, "successcodes")?,
-                error_codes: try_attribute_sep::<_, ','>(node, "errorcodes")?,
-                queues: try_attribute_sep::<_, ','>(node, "queues")?,
-                cmd_buffer_level: try_attribute_sep::<_, ','>(node, "cmdbufferlevel")?,
-                tasks: try_attribute_sep::<_, ','>(node, "tasks")?,
-                video_coding: try_attribute(node, "videocoding")?,
-                renderpass: try_attribute(node, "renderpass")?,
+                error_codes: try_attribute(node, "errorcodes")?.map(crate::CommaSeperated::into),
+                queues: try_attribute::<_, true>(node, "queues")?.map(crate::CommaSeperated::into),
+                cmd_buffer_level: try_attribute::<_, true>(node, "cmdbufferlevel")?
+                    .map(crate::CommaSeperated::into),
+                tasks: try_attribute::<_, true>(node, "tasks")?.map(crate::CommaSeperated::into),
+                video_coding: try_attribute::<_, false>(node, "videocoding")?,
+                renderpass: try_attribute::<_, false>(node, "renderpass")?,
                 comment: try_attribute(node, "comment")?,
             }))
         } else {
