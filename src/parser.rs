@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt, iter,
     num::{NonZeroU32, NonZeroU8},
     ops::Deref,
 };
@@ -218,9 +218,9 @@ fn wrap_fn_call<'a>(f: Expression<'a>, args: Vec<Expression<'a>>) -> Expression<
     Expression::FunctionCall(Box::new(f), args)
 }
 
-// fn wrap_comma<'a>(head: Expression<'a>, tail: Expression<'a>) -> Expression<'a> {
-//     Expression::Comma(Box::new(head), Box::new(tail))
-// }
+fn wrap_comma<'a>(head: Expression<'a>, tail: Expression<'a>) -> Expression<'a> {
+    Expression::Comma(Box::new(head), Box::new(tail))
+}
 
 impl<'a> From<UnaryOp<'a>> for Token<'static> {
     fn from(val: UnaryOp) -> Self {
@@ -416,6 +416,22 @@ impl<'a> FromIterator<Token<'a>> for VkXMLTokens<'a> {
     }
 }
 
+enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
+impl<T, L: Iterator<Item = T>, R: Iterator<Item = T>> Iterator for Either<L, R> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Left(l) => l.next(),
+            Self::Right(r) => r.next(),
+        }
+    }
+}
+
 fn vk_token_flat_map<'a, 'input: 'a>(
     n: roxmltree::Node<'a, 'input>,
     parsing_macros: bool,
@@ -424,18 +440,19 @@ fn vk_token_flat_map<'a, 'input: 'a>(
     // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
     let text = n.text().unwrap_or("");
     if n.is_element() {
-        vec![Ok(VkXMLToken::TextTag {
-            name: (n.tag_name().name()),
-            text: (text),
-        })]
+        Either::Left(iter::once(Ok(VkXMLToken::TextTag {
+            name: n.tag_name().name(),
+            text,
+        })))
     } else {
-        tokenize(text, parsing_macros, objc_compat)
-            .into_iter()
-            .map(|r| {
-                r.map(VkXMLToken::C)
-                    .map_err(|e| ErrorKind::LexerError(e, n.id()))
-            })
-            .collect()
+        Either::Right(
+            tokenize(text, parsing_macros, objc_compat)
+                .into_iter()
+                .map(move |r| {
+                    r.map(VkXMLToken::C)
+                        .map_err(|e| ErrorKind::LexerError(e, n.id()))
+                }),
+        )
     }
 }
 
@@ -718,6 +735,8 @@ peg::parser! {
                 name,
                 comment: None,
                 requires: None,
+                api: None,
+                deprecated: None,
                 deprecation_comment: dc.copied(),
                 is_disabled,
                 value,
@@ -758,7 +777,7 @@ peg::parser! {
 
         /// <type category="bitmask">
         pub rule type_bitmask() -> BitmaskType<'a>
-          = "typedef" is_64bits:(bitmask_flags() / bitmask64_flags()) name:name_tag() ";" { BitmaskType {name, is_64bits, has_bitvalues: false } }
+          = "typedef" is_64bits:(bitmask_flags() / bitmask64_flags()) name:name_tag() ";" { BitmaskType {name, is_64bits, has_bitvalues: false, api: None } }
     }
 }
 

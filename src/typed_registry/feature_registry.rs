@@ -1,13 +1,44 @@
+use core::fmt;
+
 use roxmltree::Node;
 
 use super::common::{CommentendChildren, SemVarVersion};
-use crate::{attribute, parse_children, try_attribute, Expression, Parse, ParseResult, StdVersion};
+use crate::{
+    attribute, parse_children, try_attribute, AliasDeprecationKind, Expression, Parse, ParseResult,
+    StdVersion,
+};
 
+#[enumflags2::bitflags]
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum FeatureApi {
+pub enum VulkanApi {
     #[strum(serialize = "vulkan")]
     Vulkan,
+    #[strum(serialize = "vulkansc")]
+    SafetyCriticalVulkan,
+}
+
+// TODO
+// "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1"
+// "VK_KHR_get_physical_device_properties2+VK_KHR_storage_buffer_storage_class"
+// "VK_KHR_swapchain+VK_KHR_get_surface_capabilities2+(VK_KHR_get_physical_device_properties2,VK_VERSION_1_1)"
+// "VK_KHR_swapchain+(VK_KHR_maintenance2,VK_VERSION_1_1)+(VK_KHR_image_format_list,VK_VERSION_1_2)"
+/// list of versions / extension names seperated by '+', ',', and/or paranthized
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+pub struct VulkanDependencies<'a>(&'a str);
+
+impl<'a> From<&'a str> for VulkanDependencies<'a> {
+    fn from(value: &'a str) -> Self {
+        VulkanDependencies(value)
+    }
+}
+
+impl fmt::Display for VulkanDependencies<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,13 +47,22 @@ pub struct Feature<'a> {
     /// version C preprocessor name
     pub name: &'a str,
     /// API tag used internally, not necessarily an actual API name
-    pub api: FeatureApi,
+    pub api: enumflags2::BitFlags<VulkanApi>,
     /// version number
     pub number: SemVarVersion,
     /// descriptive text with no semantic meaning
     pub comment: Option<&'a str>,
+    /// features to require/remove in this version
+    pub children: Vec<FeatureChild<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+pub enum FeatureChild<'a> {
     /// features to require in this version
-    pub requires: Vec<Require<'a>>,
+    Require(Require<'a>),
+    /// features to remove in this version
+    Remove(Remove<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +72,20 @@ pub struct Require<'a> {
     pub comment: Option<&'a str>,
     /// API feature name
     pub feature: Option<StdVersion>,
-    pub extension: Option<&'a str>,
+    pub api: Option<VulkanApi>,
+    pub dependencies: Option<VulkanDependencies<'a>>,
+    pub values: CommentendChildren<'a, RequireValue<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+pub struct Remove<'a> {
+    /// descriptive text with no semantic meaning
+    pub comment: Option<&'a str>,
+    /// API feature name
+    pub feature: Option<StdVersion>,
+    pub api: Option<VulkanApi>,
+    pub dependencies: Option<VulkanDependencies<'a>>,
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
@@ -62,6 +115,8 @@ pub struct RequireEnum<'a> {
     pub value: Option<RequireValueEnum<'a>>,
     /// preprocessor protection symbol for the enum
     pub protect: Option<&'a str>,
+    pub api: Option<VulkanApi>,
+    pub deprecated: Option<AliasDeprecationKind>,
     /// descriptive text with no semantic meaning
     pub comment: Option<&'a str>,
 }
@@ -96,14 +151,26 @@ impl<'a> Parse<'a> for Feature<'a> {
         if node.has_tag_name("feature") {
             Ok(Some(Feature {
                 name: attribute(node, "name")?,
-                api: attribute::<_, false>(node, "api")?,
+                api: attribute::<_, false>(node, "api").map(crate::CommaSeperated::into)?,
                 number: attribute(node, "number")?,
                 comment: try_attribute(node, "comment")?,
-                requires: parse_children(node)?,
+                children: parse_children(node)?,
             }))
         } else {
             Ok(None)
         }
+    }
+}
+
+impl<'a> Parse<'a> for FeatureChild<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        Ok(if let Some(v) = Parse::try_parse(node)? {
+            Some(FeatureChild::Require(v))
+        } else if let Some(v) = Parse::try_parse(node)? {
+            Some(FeatureChild::Remove(v))
+        } else {
+            None
+        })
     }
 }
 
@@ -112,7 +179,24 @@ impl<'a> Parse<'a> for Require<'a> {
         if node.has_tag_name("require") {
             Ok(Some(Require {
                 feature: try_attribute(node, "feature")?,
-                extension: try_attribute(node, "extension")?,
+                dependencies: try_attribute(node, "depends")?,
+                api: try_attribute::<_, false>(node, "api")?,
+                comment: try_attribute(node, "comment")?,
+                values: parse_children(node)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<'a> Parse<'a> for Remove<'a> {
+    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+        if node.has_tag_name("remove") {
+            Ok(Some(Remove {
+                feature: try_attribute(node, "feature")?,
+                dependencies: try_attribute(node, "depends")?,
+                api: try_attribute::<_, false>(node, "api")?,
                 comment: try_attribute(node, "comment")?,
                 values: parse_children(node)?,
             }))
@@ -138,6 +222,8 @@ impl<'a> Parse<'a> for RequireValue<'a> {
                 extends: try_attribute(node, "extends")?,
                 protect: try_attribute(node, "protect")?,
                 value: Parse::try_parse(node)?,
+                api: try_attribute::<_, false>(node, "api")?,
+                deprecated: try_attribute::<_, false>(node, "deprecated")?,
                 comment: try_attribute(node, "comment")?,
             }))),
             _ => Ok(None),

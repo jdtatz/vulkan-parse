@@ -52,6 +52,12 @@ impl<T: IntoIterator + FromIterator<<Self as IntoIterator>::Item>> Container for
 
 pub(crate) struct Seperated<V, const C: char>(pub V);
 
+impl<V, const C: char> Seperated<V, C> {
+    pub(crate) fn new(v: V) -> Self {
+        Self(v)
+    }
+}
+
 pub(crate) type CommaSeperated<V> = Seperated<V, ','>;
 
 // Rust's orphan rules are difficult

@@ -2,7 +2,7 @@ use std::ops;
 
 use roxmltree::Node;
 
-use super::FieldLike;
+use super::{FieldLike, VulkanApi};
 use crate::{parse_children, try_attribute, Parse, ParseResult};
 
 /// Structured definition of a single API command (function)
@@ -29,6 +29,8 @@ pub struct Command<'a> {
     pub video_coding: Option<ScopeValidity>,
     /// whether the command can be issued only inside a render pass, only outside a render pass, or both.
     pub renderpass: Option<ScopeValidity>,
+    /// which vulkan api the command belongs to
+    pub api: Option<VulkanApi>,
     /// descriptive text with no semantic meaning
     pub comment: Option<&'a str>,
 }
@@ -254,6 +256,7 @@ impl<'a> Parse<'a> for Command<'a> {
                 tasks: try_attribute::<_, true>(node, "tasks")?.map(crate::CommaSeperated::into),
                 video_coding: try_attribute::<_, false>(node, "videocoding")?,
                 renderpass: try_attribute::<_, false>(node, "renderpass")?,
+                api: try_attribute::<_, false>(node, "api")?,
                 comment: try_attribute(node, "comment")?,
             }))
         } else {

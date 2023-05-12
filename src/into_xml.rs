@@ -8,15 +8,15 @@ use quick_xml::{
 };
 
 use crate::{
-    Alias, BaseTypeType, BitPosEnum, BitmaskEnum, BitmaskType, Command, CommandParam, Comment,
-    ConstantEnum, DefineType, DefinitionOrAlias, DynamicShapeKind, EnableSpirvCapability, EnumType,
-    Enums, EnumsValues, Extension, ExtensionEnable, Feature, FieldLike, FnPtrType, Format,
-    FormatChild, GuardedDefine, HandleType, ImplicitExternSyncParam, ImplicitExternSyncParams,
-    IncludeType, IntoVkXMLTokens, Items, MacroDefine, MaybeComment, Member, Platform,
-    PropertyEnable, Proto, PseudoExtension, Registry, Require, RequireEnum, RequireValue,
-    RequireValueEnum, RequiresType, Seperated, SpirvCapability, SpirvExtension, StructEnable,
-    StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum, VersionEnable, VkXMLToken,
-    WrappedExtension,
+    Alias, BaseTypeType, BitPosEnum, BitmaskEnum, BitmaskType, CommaSeperated, Command,
+    CommandParam, Comment, ConstantEnum, DefineType, DefinitionOrAlias, DynamicShapeKind,
+    EnableSpirvCapability, EnumType, Enums, EnumsValues, Extension, ExtensionEnable, Feature,
+    FeatureChild, FieldLike, FnPtrType, Format, FormatChild, GuardedDefine, HandleType,
+    ImplicitExternSyncParam, ImplicitExternSyncParams, IncludeType, IntoVkXMLTokens, Items,
+    MacroDefine, MaybeComment, Member, Platform, PropertyEnable, Proto, PseudoExtension, Registry,
+    Remove, Require, RequireEnum, RequireValue, RequireValueEnum, RequiresType, SpirvCapability,
+    SpirvExtension, StructEnable, StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum,
+    VersionEnable, VkXMLToken, WrappedExtension,
 };
 
 type Result = std::result::Result<(), Error>;
@@ -223,10 +223,14 @@ impl<'a> IntoXMLElement for Alias<'a> {
             name,
             alias,
             comment,
+            api,
+            deprecated,
         } = self;
         element
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("alias", alias)
+            .with_opt_attribute("api", api.as_ref())
+            .with_opt_attribute("deprecated", deprecated.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_empty_()
     }
@@ -394,6 +398,8 @@ impl<'a> IntoXMLElement for FieldLike<'a> {
             .with_opt_attribute("noautovalidity", self.no_auto_validity.as_ref())
             .with_opt_attribute("externsync", self.extern_sync.as_ref())
             .with_opt_attribute("objecttype", self.object_type.as_ref())
+            .with_opt_attribute("api", self.api.as_ref())
+            .with_opt_attribute("deprecated", self.deprecated.as_ref())
             .write_tokens(self)
     }
 }
@@ -476,6 +482,7 @@ impl<'a> IntoXMLElement for GuardedDefine<'a> {
         element
             .with_fmt_attribute("name", self.name)
             .with_opt_attribute("requires", self.requires.as_ref())
+            .with_opt_attribute("api", self.api.as_ref())
             .with_opt_attribute("comment", self.comment.as_ref())
             .write_tokens(self.code.as_slice())
     }
@@ -487,6 +494,8 @@ impl<'a> IntoXMLElement for MacroDefine<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element
             .with_opt_attribute("requires", self.requires.as_ref())
+            .with_opt_attribute("deprecated", self.deprecated)
+            .with_opt_attribute("api", self.api.as_ref())
             .with_opt_attribute("comment", self.comment)
             .write_tokens(self)
     }
@@ -514,6 +523,7 @@ impl<'a> IntoXMLElement for BitmaskType<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         element // TODO requires / bitvalues
             .with_opt_attribute("bitvalues", self.bitvalues())
+            .with_opt_attribute("api", self.api)
             .write_tokens(self)
     }
 }
@@ -818,19 +828,21 @@ impl<'a> IntoXMLElement for Command<'a> {
             tasks,
             video_coding,
             renderpass,
+            api,
             comment,
         } = self;
         element
             .with_opt_attribute(
                 "successcodes",
-                success_codes.as_ref().map(Seperated::<_, ','>),
+                success_codes.as_ref().map(CommaSeperated::new),
             )
             .with_opt_attribute("errorcodes", error_codes.as_ref().map(|ec| ec.join(",")))
-            .with_opt_attribute("queues", queues.map(Seperated::<_, ','>))
-            .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.map(Seperated::<_, ','>))
-            .with_opt_attribute("tasks", tasks.map(Seperated::<_, ','>))
+            .with_opt_attribute("queues", queues.map(CommaSeperated::new))
+            .with_opt_attribute("cmdbufferlevel", cmd_buffer_level.map(CommaSeperated::new))
+            .with_opt_attribute("tasks", tasks.map(CommaSeperated::new))
             .with_opt_attribute("videocoding", video_coding.as_ref())
             .with_opt_attribute("renderpass", renderpass.as_ref())
+            .with_opt_attribute("api", api.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_children((
                 proto,
@@ -905,8 +917,7 @@ impl<'a> IntoXMLElement for Extension<'a> {
             number,
             kind,
             supported,
-            requires_core,
-            requires_depencies,
+            dependencies,
             author,
             contact,
             promoted_to,
@@ -918,14 +929,15 @@ impl<'a> IntoXMLElement for Extension<'a> {
             provisional,
             special_use,
             sort_order,
+            ratified,
         } = self;
         element
             .with_fmt_attribute("name", name)
             .with_fmt_attribute("number", number)
             .with_opt_attribute("type", kind.as_ref())
             .with_fmt_attribute("supported", supported)
-            .with_opt_attribute("requiresCore", requires_core.as_ref())
-            .with_opt_attribute("requires", requires_depencies.as_ref().map(|d| d.join(",")))
+            .with_opt_attribute("depends", dependencies.as_ref())
+            .with_opt_attribute("ratified", ratified.map(CommaSeperated::new))
             .with_opt_attribute("author", author.as_ref())
             .with_opt_attribute("contact", contact.as_ref())
             .with_opt_attribute("promotedto", promoted_to.as_ref())
@@ -960,22 +972,53 @@ impl<'a> IntoXMLElement for PseudoExtension<'a> {
     const TAG: &'static str = "extension";
 }
 
+impl<'a> IntoXML for FeatureChild<'a> {
+    fn write_xml<W: Write>(&self, writer: &mut Writer<W>) -> Result {
+        match self {
+            FeatureChild::Require(e) => e.write_xml(writer),
+            FeatureChild::Remove(e) => e.write_xml(writer),
+        }
+    }
+}
+
 impl<'a> IntoXMLElement for Require<'a> {
     fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
         let Require {
             comment,
             values,
-            extension,
+            dependencies,
+            api,
             feature,
         } = self;
         element
             .with_opt_attribute("feature", feature.as_ref())
-            .with_opt_attribute("extension", extension.as_ref())
+            .with_opt_attribute("depends", dependencies.as_ref())
+            .with_opt_attribute("api", api.as_ref())
             .with_opt_attribute("comment", comment.as_ref())
             .write_children(values.as_slice())
     }
 
     const TAG: &'static str = "require";
+}
+
+impl<'a> IntoXMLElement for Remove<'a> {
+    fn write_element<W: Write>(&self, element: ElementWriter2<W>) -> Result {
+        let Remove {
+            comment,
+            values,
+            dependencies,
+            api,
+            feature,
+        } = self;
+        element
+            .with_opt_attribute("feature", feature.as_ref())
+            .with_opt_attribute("depends", dependencies.as_ref())
+            .with_opt_attribute("api", api.as_ref())
+            .with_opt_attribute("comment", comment.as_ref())
+            .write_children(values.as_slice())
+    }
+
+    const TAG: &'static str = "remove";
 }
 
 impl<'a> IntoXML for RequireValue<'a> {
@@ -996,13 +1039,17 @@ impl<'a> IntoXML for RequireValue<'a> {
                 extends,
                 value,
                 protect,
+                api,
                 comment,
+                deprecated,
             }) => {
                 let elem = writer
                     .create_element2("enum")
                     .with_opt_attribute("name", name.as_ref())
                     .with_opt_attribute("extends", extends.as_ref())
                     .with_opt_attribute("protect", protect.as_ref())
+                    .with_opt_attribute("api", api.as_ref())
+                    .with_opt_attribute("deprecated", deprecated.as_ref())
                     .with_opt_attribute("comment", comment.as_ref());
                 match value {
                     Some(RequireValueEnum::Alias(alias)) => elem.with_fmt_attribute("alias", alias),
@@ -1033,14 +1080,14 @@ impl<'a> IntoXMLElement for Feature<'a> {
             api,
             number,
             comment,
-            requires,
+            children,
         } = self;
         element
             .with_fmt_attribute("name", name)
-            .with_fmt_attribute("api", api)
+            .with_fmt_attribute("api", CommaSeperated::new(*api))
             .with_fmt_attribute("number", number)
             .with_opt_attribute("comment", comment.as_ref())
-            .write_children(requires.as_slice())
+            .write_children(children.as_slice())
     }
 
     const TAG: &'static str = "feature";

@@ -7,7 +7,7 @@ use std::{
 
 use roxmltree::Node;
 
-use crate::{attribute, try_attribute, Parse, ParseChildren, ParseResult};
+use crate::{attribute, try_attribute, Parse, ParseChildren, ParseResult, VulkanApi};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -70,11 +70,21 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum AliasDeprecationKind {
+    /// deprecated="aliased"
+    #[strum(serialize = "aliased")]
+    Aliased,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Alias<'a> {
     pub name: &'a str,
     pub alias: &'a str,
+    pub api: Option<VulkanApi>,
+    pub deprecated: Option<AliasDeprecationKind>,
     pub comment: Option<&'a str>,
 }
 
@@ -235,6 +245,8 @@ impl<'a, T: Parse<'a>> Parse<'a> for DefinitionOrAlias<'a, T> {
             Ok(Some(DefinitionOrAlias::Alias(Alias {
                 name: attribute(node, "name")?,
                 alias,
+                api: try_attribute::<_, false>(node, "api")?,
+                deprecated: try_attribute::<_, false>(node, "deprecated")?,
                 comment: try_attribute(node, "comment")?,
             })))
         } else {

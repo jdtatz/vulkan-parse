@@ -11,7 +11,7 @@ use roxmltree::Node;
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
     attribute, parse_children, tokenize, try_attribute, Expression, Parse, ParseResult, Token,
-    TryFromTokens, TypeSpecifier,
+    TryFromTokens, TypeSpecifier, VulkanApi,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,6 +232,14 @@ pub enum NoAutoValidityKind {
     True,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum FieldLikeDeprecationKind {
+    /// deprecated="ignored"
+    #[strum(serialize = "ignored")]
+    Ignored,
+}
+
 // TODO Bikeshed needed
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
@@ -259,6 +267,10 @@ pub struct FieldLike<'a> {
     /// The field-like that paramertizes what type of vulkan handle this one is.
     /// => This field-like is a generic vulkan handle, and it is an error if `type_name` isn't `uint64_t`
     pub object_type: Option<&'a str>,
+    /// which vulkan api this belongs to
+    pub api: Option<VulkanApi>,
+    /// If this field-like is deprecated, and how it is e.g. ignored
+    pub deprecated: Option<FieldLikeDeprecationKind>,
     /// descriptive text with no semantic meaning
     pub comment: Option<&'a str>,
 }
@@ -277,6 +289,8 @@ impl<'a> FieldLike<'a> {
             optional: None,
             no_auto_validity: None,
             object_type: None,
+            api: None,
+            deprecated: None,
             comment: None,
         }
     }
@@ -352,6 +366,7 @@ pub struct GuardedDefine<'a> {
     pub comment: Option<&'a str>,
     /// name of another type definition required by this one
     pub requires: Option<&'a str>,
+    pub api: Option<VulkanApi>,
     pub code: Vec<Token<'a>>,
 }
 
@@ -365,6 +380,8 @@ pub struct MacroDefine<'a> {
     pub comment: Option<&'a str>,
     /// name of another type or macro definition required by this one
     pub requires: Option<&'a str>,
+    pub deprecated: Option<bool>,
+    pub api: Option<VulkanApi>,
     pub deprecation_comment: Option<&'a str>,
     pub is_disabled: bool,
     pub value: MacroDefineValue<'a>,
@@ -445,6 +462,7 @@ pub struct BitmaskType<'a> {
     pub name: &'a str,
     pub is_64bits: bool,
     pub has_bitvalues: bool,
+    pub api: Option<VulkanApi>,
 }
 
 impl<'a> BitmaskType<'a> {
@@ -666,6 +684,7 @@ impl<'a> Parse<'a> for GuardedDefine<'a> {
                 name,
                 comment: try_attribute(node, "comment")?,
                 requires: try_attribute(node, "requires")?,
+                api: try_attribute::<_, false>(node, "api")?,
                 code: tokenize(code, true, true)
                     .collect::<Result<_, _>>()
                     .map_err(|e| crate::ErrorKind::LexerError(e, node.id()))?,
@@ -680,6 +699,9 @@ impl<'a> Parse<'a> for MacroDefine<'a> {
     fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(Self {
             requires: try_attribute(node, "requires")?,
+            deprecated: try_attribute(node, "deprecated")?,
+            api: try_attribute::<_, false>(node, "api")?,
+            comment: try_attribute(node, "comment")?,
             ..Self::try_from_node(node)?
         }))
     }
@@ -706,6 +728,7 @@ impl<'a> Parse<'a> for BitmaskType<'a> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
+            api: try_attribute::<_, false>(node, "api")?,
             ..TryFromTokens::try_from_node(node)?
         }))
     }
@@ -803,6 +826,8 @@ impl<'a> Parse<'a> for FieldLike<'a> {
             optional: try_attribute(node, "optional")?,
             no_auto_validity: try_attribute::<_, false>(node, "noautovalidity")?,
             object_type: try_attribute(node, "objecttype")?,
+            api: try_attribute::<_, false>(node, "api")?,
+            deprecated: try_attribute::<_, false>(node, "deprecated")?,
             ..Self::try_from_node(node)?
         }))
     }

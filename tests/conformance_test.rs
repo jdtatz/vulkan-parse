@@ -15,7 +15,7 @@ fn test_vk_xml_conformance() {
     into_xml(&registry, Cursor::new(&mut roundtrip_xml)).unwrap();
     fs::write("vk.roundtrip.xml", &roundtrip_xml).unwrap();
     let roundtrip_xml = String::from_utf8(roundtrip_xml).unwrap();
-    xml_compare(&xml, &roundtrip_xml);
+    xml_compare(&xml, &roundtrip_xml, "Vulkan-Docs/xml/vk.xml");
 }
 
 #[test]
@@ -30,12 +30,12 @@ fn test_video_xml_conformance() {
     into_xml(&registry, Cursor::new(&mut roundtrip_xml)).unwrap();
     fs::write("video.roundtrip.xml", &roundtrip_xml).unwrap();
     let roundtrip_xml = String::from_utf8(roundtrip_xml).unwrap();
-    xml_compare(&xml, &roundtrip_xml);
+    xml_compare(&xml, &roundtrip_xml, "Vulkan-Docs/xml/video.xml");
 }
 
-const UNORDERED_ATTRS: &[&str] = &["queues", "cmdbufferlevel", "tasks"];
+const UNORDERED_ATTRS: &[&str] = &["queues", "cmdbufferlevel", "tasks", "api"];
 
-fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
+fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
     let standard_xml = standard_xml.replace("__IOSurface*", "<type>__IOSurface</type>*");
     let standard_doc = Document::parse(&standard_xml).unwrap();
     let roundtrip_doc = Document::parse(roundtrip_xml).unwrap();
@@ -51,7 +51,8 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
                 || (s.tag_name() != r.tag_name())
                 || (s.attributes().len() != r.attributes().len())
             {
-                panic!("standard {:#?} != roundtrip {:#?}", s, r);
+                // panic!("standard {s:#?} != roundtrip {r:#?} at {path}:{}", standard_doc.text_pos_at(s.range().start));
+                assert_eq!(s, r, "{path}:{}", standard_doc.text_pos_at(s.range().start));
             }
             for attr in s.attributes() {
                 let r_attr_val = if let Some(r_attr_val) = r.attribute(attr.name()) {
@@ -68,7 +69,12 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str) {
                     if UNORDERED_ATTRS.contains(&attr.name()) {
                         let s_set = attr.value().split(',').collect::<HashSet<_>>();
                         let r_set = r_attr_val.split(',').collect::<HashSet<_>>();
-                        assert_eq!(s_set, r_set);
+                        assert_eq!(
+                            s_set,
+                            r_set,
+                            "{path}:{}",
+                            standard_doc.text_pos_at(s.range().start)
+                        );
                     } else if let Some(s_ver) = attr.value().strip_prefix("VK_API_VERSION_") {
                         // # VK_VERSION_* are the guard macros and VK_API_VERSION_* are the version number macros
                         // # see Vulkan-Docs/scripts/spirvcapgenerator.py:125:

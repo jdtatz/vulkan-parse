@@ -1,12 +1,13 @@
+use core::str::FromStr;
 use std::fmt;
 
 use roxmltree::Node;
 
 use super::{
-    common::{SemVarVersion, StdVersion},
-    feature_registry::Require,
+    common::StdVersion,
+    feature_registry::{Require, VulkanApi},
 };
-use crate::{attribute, parse_children, try_attribute, Parse, ParseResult};
+use crate::{attribute, parse_children, try_attribute, Parse, ParseResult, VulkanDependencies};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -18,13 +19,34 @@ pub enum ExtensionKind {
     // PhysicalDevice,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExtensionSupport {
-    #[strum(serialize = "vulkan")]
-    Vulkan,
-    #[strum(serialize = "disabled")]
+    Api(enumflags2::BitFlags<VulkanApi>),
     Disabled,
+}
+
+impl FromStr for ExtensionSupport {
+    type Err = <VulkanApi as FromStr>::Err;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "disabled" {
+            Ok(Self::Disabled)
+        } else {
+            crate::CommaSeperated::from_str(s).map(|v| Self::Api(v.into()))
+        }
+    }
+}
+
+impl fmt::Display for ExtensionSupport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExtensionSupport::Api(value) => {
+                crate::fmt_write_interspersed(f, value.into_iter(), ",")
+            }
+            ExtensionSupport::Disabled => write!(f, "disabled"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,10 +85,10 @@ pub struct Extension<'a> {
     pub kind: Option<ExtensionKind>,
     /// profile name(s) supporting this extension, e.g. 'vulkan' or 'disabled' to never generate output.
     pub supported: ExtensionSupport,
-    /// core version of Vulkan required by the extension
-    pub requires_core: Option<SemVarVersion>,
-    /// list of extension names required by this
-    pub requires_depencies: Option<Vec<&'a str>>,
+    /// vulkan versions / extensions required
+    pub dependencies: Option<VulkanDependencies<'a>>,
+    /// vulkan apis that the extension has been ratified by Khronos for
+    pub ratified: Option<enumflags2::BitFlags<VulkanApi>>,
 
     // Only missing for VK_RESERVED_do_not_use_94 & VK_RESERVED_do_not_use_146
     /// name of the author (usually a company or project name)
@@ -114,8 +136,8 @@ impl<'a> Parse<'a> for Extension<'a> {
                     number,
                     kind: try_attribute::<_, false>(node, "type")?,
                     supported: attribute::<_, false>(node, "supported")?,
-                    requires_core: try_attribute(node, "requiresCore")?,
-                    requires_depencies: try_attribute(node, "requires")?
+                    dependencies: try_attribute(node, "depends")?,
+                    ratified: try_attribute::<_, false>(node, "ratified")?
                         .map(crate::CommaSeperated::into),
                     author: try_attribute(node, "author")?,
                     contact: try_attribute(node, "contact")?,
