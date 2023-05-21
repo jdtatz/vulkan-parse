@@ -90,7 +90,18 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
             let std_txt = s.text().unwrap();
             let rt_txt = r.text().unwrap();
             if std_txt != rt_txt {
-                assert!(tokenize(std_txt, false, true).eq(tokenize(rt_txt, false, true)));
+                let std_toks = tokenize(std_txt, false, true)
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap();
+                let rt_toks: Vec<_> = tokenize(rt_txt, false, true)
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap();
+                assert_eq!(
+                    std_toks,
+                    rt_toks,
+                    "{path}:{}",
+                    standard_doc.text_pos_at(s.range().start)
+                );
             }
         }
     }

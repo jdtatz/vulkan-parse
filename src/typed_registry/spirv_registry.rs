@@ -3,37 +3,46 @@ use std::fmt;
 use roxmltree::Node;
 
 use super::common::StdVersion;
-use crate::{
-    attribute, parse_children, try_attribute, ErrorKind, Expression, Parse, ParseResult,
-    StdVersionParseError,
-};
+use crate::{Expression, StdVersionParseError};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "spirvextension")]
 pub struct SpirvExtension<'a> {
+    #[xml(attribute())]
     pub name: &'a str,
     // TODO, usually the only diffrence between `name` & `enable_extension` is the prefix ("SPV_" vs "VK_"), but not always
-    pub enable_extension: ExtensionEnable<'a>,
+    #[xml(child)]
     pub enable_version: Option<VersionEnable>,
+    #[xml(child)]
+    pub enable_extension: ExtensionEnable<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "spirvcapability")]
 pub struct SpirvCapability<'a> {
+    #[xml(attribute())]
     pub name: &'a str,
+    #[xml(child)]
     pub enables: Vec<EnableSpirvCapability<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "enable")]
 pub enum EnableSpirvCapability<'a> {
+    #[xml(discriminant(attr = "version"))]
     Version(VersionEnable),
+    #[xml(discriminant(attr = "extension"))]
     Extension(ExtensionEnable<'a>),
+    #[xml(discriminant(attr = "struct"))]
     Struct(StructEnable<'a>),
+    #[xml(discriminant(attr = "property"))]
     Property(PropertyEnable<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum EnableRequires<'a> {
     Core(StdVersion),
@@ -41,10 +50,10 @@ pub enum EnableRequires<'a> {
     Mix(StdVersion, &'a str),
 }
 
-impl<'a> TryFrom<&'a str> for EnableRequires<'a> {
+impl<'a, 'de: 'a> TryFrom<&'de str> for EnableRequires<'a> {
     type Error = StdVersionParseError;
 
-    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(s: &'de str) -> Result<Self, Self::Error> {
         Ok(if let Some((v, e)) = s.split_once(',') {
             EnableRequires::Mix(v.parse()?, e)
         } else if let Ok(v) = s.parse() {
@@ -65,131 +74,53 @@ impl<'a> fmt::Display for EnableRequires<'a> {
 }
 
 /// If the API version is supported, the SPIR-V extension or capability is enabled.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct VersionEnable(pub StdVersion);
+#[xml(tag = "enable", discriminant(attr = "version"))]
+pub struct VersionEnable {
+    #[xml(attribute())]
+    pub version: StdVersion,
+}
 
 /// If the API extension is supported and enabled, the SPIR-V extension or capability is enabled.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct ExtensionEnable<'a>(pub &'a str);
+#[xml(tag = "enable")]
+pub struct ExtensionEnable<'a> {
+    #[xml(attribute())]
+    pub extension: &'a str,
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructEnable<'a> {
     /// API feature structure name
+    #[xml(attribute(rename = "struct"))]
     pub name: &'a str,
     /// API feature name, matching the name of a member of the `name` structure
+    #[xml(attribute())]
     pub feature: &'a str,
     /// list of API feature version numbers and/or extension names.
+    #[xml(attribute())]
     pub requires: EnableRequires<'a>,
     /// Another API feature name which is an alias of `feature`. Needed when the same feature is provided by two different API versions or extensions.
+    #[xml(attribute())]
     pub alias: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct PropertyEnable<'a> {
     /// API property structure name
+    #[xml(attribute(rename = "property"))]
     pub name: &'a str,
     /// API property name, matching the name of a member of the `name` structure
+    #[xml(attribute())]
     pub member: &'a str,
     /// A value, matching an API enum value. If the property is a bitfield, `value` must be a bitmask value belonging to the `member` bitfield type. Otherwise, `value` must be an enum name defined for the `member` enumeration type.
+    #[xml(attribute())]
     pub value: Expression<'a>,
     /// list of API feature version numbers and/or extension names.
+    #[xml(attribute())]
     pub requires: EnableRequires<'a>,
-}
-
-impl<'a> Parse<'a> for SpirvExtension<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("spirvextension") {
-            let mut it = node
-                .children()
-                .into_iter()
-                .filter(|n| n.has_tag_name("enable"));
-            Ok(Some(SpirvExtension {
-                name: (attribute(node, "name")?),
-                enable_extension: it
-                    .clone()
-                    .find_map(|n| ExtensionEnable::try_parse(n).transpose())
-                    .ok_or_else(|| ErrorKind::MissingChildElement("extension", node.id()))??,
-                enable_version: it
-                    .find_map(|n| VersionEnable::try_parse(n).transpose())
-                    .transpose()?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for SpirvCapability<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("spirvcapability") {
-            Ok(Some(SpirvCapability {
-                name: (attribute(node, "name")?),
-                enables: parse_children(node)?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for EnableSpirvCapability<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(v) = VersionEnable::try_parse(node)? {
-            Ok(Some(EnableSpirvCapability::Version(v)))
-        } else if let Some(v) = ExtensionEnable::try_parse(node)? {
-            Ok(Some(EnableSpirvCapability::Extension(v)))
-        } else if let Some(v) = StructEnable::try_parse(node)? {
-            Ok(Some(EnableSpirvCapability::Struct(v)))
-        } else if let Some(v) = PropertyEnable::try_parse(node)? {
-            Ok(Some(EnableSpirvCapability::Property(v)))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for VersionEnable {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(try_attribute(node, "version")?.map(VersionEnable))
-    }
-}
-
-impl<'a> Parse<'a> for ExtensionEnable<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(try_attribute(node, "extension")?.map(ExtensionEnable))
-    }
-}
-
-impl<'a> Parse<'a> for StructEnable<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(name) = try_attribute(node, "struct")? {
-            Ok(Some(StructEnable {
-                name,
-                feature: (attribute(node, "feature")?),
-                requires: (attribute(node, "requires")?),
-                alias: try_attribute(node, "alias")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for PropertyEnable<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(name) = try_attribute(node, "property")? {
-            Ok(Some(PropertyEnable {
-                name,
-                requires: (attribute(node, "requires")?),
-                member: (attribute(node, "member")?),
-                value: attribute(node, "value")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
 }

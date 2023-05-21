@@ -1,11 +1,14 @@
 use std::num::NonZeroU8;
 
-use crate::typed_registry::{
-    BaseTypeType, BitmaskEnum, BitmaskType, Command, CommentendChildren, ConstantEnum, DefineType,
-    DefinitionOrAlias, EnumType, Enums, EnumsValues, Extension, Feature, FnPtrType, Format,
-    HandleType, IncludeType, Items, Platform, PseudoExtension, Registry, RequiresType,
-    SpirvCapability, SpirvExtension, StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum,
-    WrappedExtension,
+use crate::{
+    typed_registry::{
+        BaseTypeType, BitmaskEnum, BitmaskType, Command, CommentendChildren, ConstantEnum,
+        DefineType, DefinitionOrAlias, EnumType, Enums, EnumsValues, Extension, Feature, FnPtrType,
+        Format, HandleType, IncludeType, Items, Platform, PseudoExtension, Registry, RequiresType,
+        SpirvCapability, SpirvExtension, StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum,
+        WrappedExtension,
+    },
+    UnescapedStr,
 };
 
 #[derive(Debug, Clone)]
@@ -31,7 +34,7 @@ pub enum CodegenUnit<'a> {
         /// bit width of the enum value type. If omitted, a default value of 32 is used.
         bit_width: Option<NonZeroU8>,
         /// descriptive text with no semantic meaning
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
         values: CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>,
         unused_values: Option<UnusedEnum<'a>>,
     },
@@ -42,7 +45,7 @@ pub enum CodegenUnit<'a> {
         /// bit width of the enum value type. If omitted, a default value of 32 is used.
         bit_width: Option<NonZeroU8>,
         /// descriptive text with no semantic meaning
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
         values: CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>,
     },
     Command(DefinitionOrAlias<'a, Command<'a>>),
@@ -137,7 +140,7 @@ impl<'a> From<SpirvCapability<'a>> for CodegenUnit<'a> {
 impl<'a> From<Registry<'a>> for Vec<CodegenUnit<'a>> {
     fn from(registry: Registry<'a>) -> Self {
         let mut units = Vec::new();
-        for items in registry.0.into_values() {
+        for items in registry.registry.into_values() {
             match items {
                 Items::Platforms {
                     platforms,
@@ -148,14 +151,18 @@ impl<'a> From<Registry<'a>> for Vec<CodegenUnit<'a>> {
                     units.extend(types.into_values().map(CodegenUnit::from))
                 }
                 Items::Enums(Enums {
-                    values: EnumsValues::Constants(constants),
+                    values: EnumsValues::Constants { constants },
                     ..
                 }) => units.extend(constants.into_values().map(CodegenUnit::from)),
                 Items::Enums(Enums {
                     name,
                     bit_width,
                     comment,
-                    values: EnumsValues::Enum(values, unused_values),
+                    values:
+                        EnumsValues::Enum {
+                            values,
+                            unused_values,
+                        },
                 }) => units.push(CodegenUnit::Enum {
                     name,
                     bit_width,
@@ -167,7 +174,7 @@ impl<'a> From<Registry<'a>> for Vec<CodegenUnit<'a>> {
                     name,
                     bit_width,
                     comment,
-                    values: EnumsValues::Bitmask(values),
+                    values: EnumsValues::Bitmask { values },
                 }) => units.push(CodegenUnit::Bitmask {
                     name,
                     bit_width,
@@ -183,7 +190,9 @@ impl<'a> From<Registry<'a>> for Vec<CodegenUnit<'a>> {
                     extensions,
                     comment: _,
                 } => units.extend(extensions.into_iter().map(CodegenUnit::from)),
-                Items::Formats(formats) => units.extend(formats.into_iter().map(CodegenUnit::from)),
+                Items::Formats { formats } => {
+                    units.extend(formats.into_iter().map(CodegenUnit::from))
+                }
                 Items::SpirvExtensions {
                     extensions,
                     comment: _,

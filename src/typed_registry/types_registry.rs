@@ -7,11 +7,12 @@ use std::{
 };
 
 use roxmltree::Node;
+use vulkan_parse_derive_helper::DisplayEscaped;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, parse_children, tokenize, try_attribute, Expression, Parse, ParseResult, Token,
-    TryFromTokens, TypeSpecifier, VulkanApi,
+    attribute, tokenize, try_attribute, DisplayEscaped, Expression, ParseResult, Token,
+    TryFromEscapedStr, TryFromTokens, TypeSpecifier, UnescapedStr, VulkanApi,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +29,7 @@ pub enum ArrayLength<'a> {
     Constant(&'a str),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DynamicLength<'a> {
     NullTerminated,
@@ -38,8 +39,8 @@ pub enum DynamicLength<'a> {
     ParameterizedField { parameter: &'a str, field: &'a str },
 }
 
-impl<'a> From<&'a str> for DynamicLength<'a> {
-    fn from(v: &'a str) -> Self {
+impl<'a, 'de: 'a> From<&'de str> for DynamicLength<'a> {
+    fn from(v: &'de str) -> Self {
         if v == "null-terminated" {
             DynamicLength::NullTerminated
         } else if let Ok(n) = v.parse() {
@@ -71,6 +72,19 @@ impl<'a> fmt::Display for DynamicLength<'a> {
     }
 }
 
+impl<'a> DisplayEscaped for DynamicLength<'a> {
+    fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DynamicLength::NullTerminated => write!(f, "null-terminated"),
+            DynamicLength::Static(n) => write!(f, "{n}"),
+            DynamicLength::Parameterized(p) => write!(f, "{p}"),
+            DynamicLength::ParameterizedField { parameter, field } => {
+                write!(f, "{parameter}-&gt;{field}")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DynamicShapeKind<'a> {
@@ -82,7 +96,52 @@ pub enum DynamicShapeKind<'a> {
     Double(DynamicLength<'a>, DynamicLength<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for DynamicShapeKind<'a> {
+    fn from_attributes<'input: 'xml>(
+        node: Node<'xml, 'input>,
+    ) -> ParseResult<Result<Self, &'static [&'static str]>> {
+        let len: Option<&str> = crate::TryFromAttrValue::try_from_attr_value(
+            node.attribute_node("len"),
+            "len",
+            node.id(),
+        )?;
+
+        if let Some(len) = len {
+            Ok(Ok(
+                if let Some(latex_expr) = len.strip_prefix("latexmath:") {
+                    // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
+                    let c_expr = attribute(node, "altlen")?;
+                    DynamicShapeKind::Expression { latex_expr, c_expr }
+                } else if let Some((l1, l2)) = len.split_once(',') {
+                    DynamicShapeKind::Double(l1.into(), l2.into())
+                } else {
+                    DynamicShapeKind::Single(len.into())
+                },
+            ))
+        } else {
+            Ok(Err(&["len"]))
+        }
+    }
+}
+
+impl<'a> crate::IntoXMLAttributes for DynamicShapeKind<'a> {
+    fn write_attributes<'t, 'w, W: ?Sized + crate::XMLWriter>(
+        &self,
+        element: crate::XMLElementBuilder<'t, 'w, W>,
+    ) -> Result<crate::XMLElementBuilder<'t, 'w, W>, W::Error> {
+        match self {
+            DynamicShapeKind::Expression { latex_expr, c_expr } => element
+                .with_escaped_attribute("len", &format_args!("latexmath:{latex_expr}"))?
+                .with_escaped_attribute("altlen", c_expr),
+            DynamicShapeKind::Single(l) => element.with_escaped_attribute("len", l),
+            DynamicShapeKind::Double(l1, l2) => {
+                element.with_escaped_attribute("len", &format_args!("{l1},{l2}"))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum OptionalKind {
     Single(bool),
@@ -157,10 +216,10 @@ impl fmt::Display for ExternSyncParseError {
 
 impl std::error::Error for ExternSyncParseError {}
 
-impl<'a> TryFrom<&'a str> for ExternSyncField<'a> {
+impl<'a, 'de: 'a> TryFrom<&'de str> for ExternSyncField<'a> {
     type Error = ExternSyncParseError;
 
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(value: &'de str) -> Result<Self, Self::Error> {
         if let Some((param, field)) = value.split_once("[].") {
             Ok(Self {
                 param: ExternSyncParam::ArrayParam(param),
@@ -179,7 +238,7 @@ impl<'a> TryFrom<&'a str> for ExternSyncField<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ExternSyncKind<'a> {
     /// externsync="true"
@@ -187,7 +246,7 @@ pub enum ExternSyncKind<'a> {
     Fields(Vec<ExternSyncField<'a>>),
 }
 
-impl<'a> TryFrom<&'a str> for ExternSyncKind<'a> {
+impl<'a, 'de: 'a> TryFrom<&'de str> for ExternSyncKind<'a> {
     type Error = ExternSyncParseError;
 
     fn try_from(s: &'a str) -> Result<Self, Self::Error> {
@@ -219,12 +278,31 @@ impl<'a> fmt::Display for ExternSyncKind<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExternSyncKind::True => write!(f, "true"),
-            ExternSyncKind::Fields(fs) => crate::fmt_write_interspersed(f, fs.iter(), ","),
+            ExternSyncKind::Fields(fs) => write!(
+                f,
+                "{}",
+                crate::InterspersedDisplay::<crate::CommaSeperator, _>::new(fs.as_slice())
+            ),
         }
     }
 }
+impl<'a> crate::DisplayEscaped for ExternSyncKind<'a> {
+    fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        //FIXME
+        crate::Unescaped(self).escaped_fmt(f)
+    }
+}
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum NoAutoValidityKind {
     /// noautovalidity="true"
@@ -232,7 +310,16 @@ pub enum NoAutoValidityKind {
     True,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum FieldLikeDeprecationKind {
     /// deprecated="ignored"
@@ -248,8 +335,9 @@ pub enum FieldLikeSizing<'a> {
     ArrayShape(Vec<ArrayLength<'a>>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tokenized)]
 pub struct FieldLike<'a> {
     pub name: &'a str,
     pub type_name: TypeSpecifier<'a>,
@@ -257,22 +345,29 @@ pub struct FieldLike<'a> {
     pub is_const: bool,
     pub pointer_kind: Option<PointerKind>,
     pub sizing: Option<FieldLikeSizing<'a>>,
+    #[xml(attribute(flattened))]
     pub dynamic_shape: Option<DynamicShapeKind<'a>>,
     /// denotes that the member should be externally synchronized when accessed by Vulkan
+    #[xml(attribute(rename = "externsync"))]
     pub extern_sync: Option<ExternSyncKind<'a>>,
     /// whether this value can be omitted by providing NULL (for pointers), VK_NULL_HANDLE (for handles) or 0 (for bitmasks/values)
+    #[xml(attribute())]
     pub optional: Option<OptionalKind>,
     /// no automatic validity language should be generated
+    #[xml(attribute(rename = "noautovalidity"))]
     pub no_auto_validity: Option<NoAutoValidityKind>,
     /// The field-like that paramertizes what type of vulkan handle this one is.
     /// => This field-like is a generic vulkan handle, and it is an error if `type_name` isn't `uint64_t`
+    #[xml(attribute(rename = "objecttype"))]
     pub object_type: Option<&'a str>,
     /// which vulkan api this belongs to
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
     /// If this field-like is deprecated, and how it is e.g. ignored
+    #[xml(attribute())]
     pub deprecated: Option<FieldLikeDeprecationKind>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 impl<'a> FieldLike<'a> {
@@ -313,38 +408,50 @@ impl<'a> FieldLike<'a> {
 }
 
 /// <type>
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "type")]
 pub enum Type<'a> {
-    /// <type> without category attribute
-    Requires(RequiresType<'a>),
     /// <type category="include">
+    #[xml(discriminant(attr = "category", value = "include"))]
     Include(IncludeType<'a>),
     /// <type category="define">
+    #[xml(discriminant(attr = "category", value = "define"))]
     Define(DefineType<'a>),
     /// <type category="basetype">
+    #[xml(discriminant(attr = "category", value = "basetype"))]
     BaseType(BaseTypeType<'a>),
     /// <type category="bitmask">
+    #[xml(discriminant(attr = "category", value = "bitmask"))]
     Bitmask(DefinitionOrAlias<'a, BitmaskType<'a>>),
     /// <type category="handle">
+    #[xml(discriminant(attr = "category", value = "handle"))]
     Handle(DefinitionOrAlias<'a, HandleType<'a>>),
     /// <type category="enum">
+    #[xml(discriminant(attr = "category", value = "enum"))]
     Enum(DefinitionOrAlias<'a, EnumType<'a>>),
     /// <type category="funcpointer">
+    #[xml(discriminant(attr = "category", value = "funcpointer"))]
     FnPtr(FnPtrType<'a>),
     /// <type category="struct">
+    #[xml(discriminant(attr = "category", value = "struct"))]
     Struct(DefinitionOrAlias<'a, StructType<'a>>),
     /// <type category="union">
+    #[xml(discriminant(attr = "category", value = "union"))]
     Union(UnionType<'a>),
+    /// <type> without category attribute
+    Requires(RequiresType<'a>),
 }
 
 /// <type> without category attribute
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct RequiresType<'a> {
     /// name of this type
+    #[xml(attribute())]
     pub name: &'a str,
     /// name of another type definition required by this one
+    #[xml(attribute())]
     pub requires: Option<&'a str>,
 }
 
@@ -357,30 +464,84 @@ pub struct IncludeType<'a> {
     pub is_local_include: Option<bool>,
 }
 
-/// <type category="define" name="...">
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+pub struct MacroCode<'t>(pub Vec<Token<'t>>);
+
+impl<'t, 's: 't> TryFromEscapedStr<'s> for MacroCode<'t> {
+    type Error = crate::lexer::Error;
+
+    fn try_from_escaped_str(s: &'s str) -> Result<Self, Self::Error> {
+        tokenize(s, true, true)
+            .collect::<Result<_, _>>()
+            .map(MacroCode)
+    }
+}
+
+impl<'t> fmt::Display for MacroCode<'t> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut last_ident_like = false;
+        for token in &self.0 {
+            let is_ident_like = token.is_ident_like();
+            if last_ident_like && is_ident_like {
+                write!(f, " ")?
+            };
+            write!(f, "{token}")?;
+            last_ident_like = is_ident_like;
+        }
+        Ok(())
+    }
+}
+
+impl<'t> DisplayEscaped for MacroCode<'t> {
+    fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut last_ident_like = false;
+        for token in &self.0 {
+            let is_ident_like = token.is_ident_like();
+            if last_ident_like && is_ident_like {
+                write!(f, " ")?
+            };
+            token.escaped_fmt(f)?;
+            last_ident_like = is_ident_like;
+        }
+        Ok(())
+    }
+}
+
+/// <type category="define" name="...">
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct GuardedDefine<'a> {
+    #[xml(attribute())]
     pub name: &'a str,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
     /// name of another type definition required by this one
+    #[xml(attribute())]
     pub requires: Option<&'a str>,
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
-    pub code: Vec<Token<'a>>,
+    #[xml(text)]
+    pub code: MacroCode<'a>,
 }
 
 /// <type category="define">...<name>...</name>...</type>
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tokenized)]
 pub struct MacroDefine<'a> {
     /// name of defined macro
     pub name: &'a str,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
     /// name of another type or macro definition required by this one
+    #[xml(attribute())]
     pub requires: Option<&'a str>,
+    #[xml(attribute())]
     pub deprecated: Option<bool>,
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
     pub deprecation_comment: Option<&'a str>,
     pub is_disabled: bool,
@@ -388,9 +549,11 @@ pub struct MacroDefine<'a> {
 }
 
 /// <type category="define">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "type")]
 pub enum DefineType<'a> {
+    #[xml(discriminant(attr = "name"))]
     GuardedMacro(GuardedDefine<'a>),
     Macro(MacroDefine<'a>),
 }
@@ -426,8 +589,9 @@ impl<'a> MacroDefineValue<'a> {
 // NOTE: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
 //       but should be  `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;`
 /// <type category="basetype">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "type", tokenized)]
 pub enum BaseTypeType<'a> {
     /// Forward declaration of a struct
     Forward(&'a str),
@@ -445,7 +609,7 @@ pub enum BaseTypeType<'a> {
 
 impl<'a> BaseTypeType<'a> {
     #[must_use]
-    pub fn name(&self) -> &&'a str {
+    pub fn name(&self) -> &'a str {
         match self {
             BaseTypeType::Forward(name)
             | BaseTypeType::TypeDef(FieldLike { name, .. })
@@ -484,15 +648,18 @@ impl<'a> BitmaskType<'a> {
 }
 
 /// <type category="handle">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tokenized)]
 pub struct HandleType<'a> {
     /// name of this type
     pub name: &'a str,
     pub handle_kind: HandleKind,
     /// name of VK_OBJECT_TYPE_* API enumerant which corresponds to this type.
+    #[xml(attribute(rename = "objtypeenum"))]
     pub obj_type_enum: &'a str,
     /// Notes another handle type that acts as a parent object for this type.
+    #[xml(attribute())]
     pub parent: Option<&'a str>,
 }
 
@@ -507,60 +674,90 @@ pub enum HandleKind {
     NoDispatch,
 }
 
+// FIXME Remove ASAP
+impl<'a> Into<UnescapedStr<'a>> for HandleKind {
+    fn into(self) -> UnescapedStr<'a> {
+        UnescapedStr(Cow::Borrowed(self.into()))
+    }
+}
+
 /// <type category="enum">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct EnumType<'a> {
     /// name of this type
+    #[xml(attribute())]
     pub name: &'a str,
 }
 
 /// <type category="funcpointer">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tokenized)]
 pub struct FnPtrType<'a> {
     /// name of this type
     pub name: &'a str,
     pub return_type_name: TypeSpecifier<'a>,
     pub return_type_pointer_kind: Option<PointerKind>,
     /// name of another type definition required by this one
+    #[xml(attribute())]
     pub requires: Option<&'a str>,
     pub params: Option<Vec<FieldLike<'a>>>,
 }
 
 /// <type category="struct">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructType<'a> {
     /// name of this type
+    #[xml(attribute())]
     pub name: &'a str,
+    #[xml(child)]
     pub members: CommentendChildren<'a, Member<'a>>,
     /// Notes that this struct is going to be filled in by the API, rather than an application filling it out and passing it to the API.
+    #[xml(attribute(rename = "returnedonly"))]
     pub returned_only: Option<bool>,
     /// Lists parent structures which this structure may extend via the `pNext` chain of the parent.
+    #[xml(attribute(seperator = "crate::CommaSeperator", rename = "structextends"))]
     pub struct_extends: Option<Vec<&'a str>>,
     /// `pNext` can include multiple structures of this type.
+    #[xml(attribute(rename = "allowduplicate"))]
     pub allow_duplicate: Option<bool>,
     /// name of another type definition required by this one
+    #[xml(attribute())]
     pub requires: Option<&'a str>,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
 }
 
 /// <type category="union">
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct UnionType<'a> {
     /// name of this type
+    #[xml(attribute())]
     pub name: &'a str,
+    #[xml(child)]
     pub members: CommentendChildren<'a, Member<'a>>,
     /// Notes that this union is going to be filled in by the API, rather than an application filling it out and passing it to the API.
+    #[xml(attribute(rename = "returnedonly"))]
     pub returned_only: Option<bool>,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[non_exhaustive]
 pub enum MemberSelector {
@@ -572,7 +769,16 @@ pub enum MemberSelector {
     GeometryType,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[non_exhaustive]
 pub enum MemberLimitType {
@@ -603,18 +809,24 @@ pub enum MemberLimitType {
 }
 
 /// <member>
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "member")]
 pub struct Member<'a> {
+    #[xml(flatten)]
     pub base: FieldLike<'a>,
     /// for a union member, identifies a separate enum member that selects which of the union's members are valid
+    #[xml(attribute())]
     pub selector: Option<MemberSelector>,
     /// for a member of a union, identifies an enum value indicating the member is valid
+    #[xml(attribute())]
     pub selection: Option<&'a str>,
     /// list of legal values, usually used only for `sType` enums
+    #[xml(attribute())]
     pub values: Option<&'a str>,
     /// Specifies the type of a device limit.
     /// only applicable for members of VkPhysicalDeviceProperties and VkPhysicalDeviceProperties2, their substructures, and extensions.
+    #[xml(attribute(rename = "limittype"))]
     pub limit_type: Option<MemberLimitType>,
 }
 
@@ -632,41 +844,8 @@ impl<'a> ops::DerefMut for Member<'a> {
     }
 }
 
-impl<'a> Parse<'a> for Type<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("type") {
-            let category = try_attribute(node, "category")?;
-            match category {
-                None => RequiresType::parse(node).map(Type::Requires),
-                Some("include") => IncludeType::parse(node).map(Type::Include),
-                Some("define") => DefineType::parse(node).map(Type::Define),
-                Some("basetype") => BaseTypeType::parse(node).map(Type::BaseType),
-                Some("bitmask") => DefinitionOrAlias::parse(node).map(Type::Bitmask),
-                Some("handle") => DefinitionOrAlias::parse(node).map(Type::Handle),
-                Some("enum") => DefinitionOrAlias::parse(node).map(Type::Enum),
-                Some("funcpointer") => FnPtrType::parse(node).map(Type::FnPtr),
-                Some("struct") => DefinitionOrAlias::parse(node).map(Type::Struct),
-                Some("union") => UnionType::parse(node).map(Type::Union),
-                Some(_) => unreachable!(),
-            }
-            .map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for RequiresType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(RequiresType {
-            name: attribute(node, "name")?,
-            requires: try_attribute(node, "requires")?,
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for IncludeType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, 'de: 'a> crate::TryFromXML<'de> for IncludeType<'a> {
+    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(IncludeType {
             name: attribute(node, "name")?,
             is_local_include: node.text().map(|s| s.contains('"')),
@@ -674,161 +853,53 @@ impl<'a> Parse<'a> for IncludeType<'a> {
     }
 }
 
-impl<'a> Parse<'a> for GuardedDefine<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(name) = try_attribute(node, "name")? {
-            let code = node
-                .text()
-                .ok_or_else(|| crate::ErrorKind::EmptyElement(node.id()))?;
-            Ok(Some(Self {
-                name,
-                comment: try_attribute(node, "comment")?,
-                requires: try_attribute(node, "requires")?,
-                api: try_attribute::<_, false>(node, "api")?,
-                code: tokenize(code, true, true)
-                    .collect::<Result<_, _>>()
-                    .map_err(|e| crate::ErrorKind::LexerError(e, node.id()))?,
-            }))
-        } else {
-            Ok(None)
+impl<'a> crate::IntoXMLElement for IncludeType<'a> {
+    const TAG: &'static str = "type";
+
+    fn write_element<'w, W: ?Sized + crate::XMLWriter>(
+        &self,
+        element: crate::XMLElementBuilder<'static, 'w, W>,
+    ) -> Result<(), W::Error> {
+        let Self {
+            name,
+            is_local_include,
+        } = self;
+        let elem = element.with_escaped_attribute("name", name)?;
+        match is_local_include {
+            Some(true) if name.ends_with(".h") => {
+                elem.write_escaped_text(&format_args!("#include \"{name}\""))
+            }
+            Some(true) => elem.write_escaped_text(&format_args!("#include \"{name}.h\"")),
+            Some(false) if name.ends_with(".h") => {
+                elem.write_escaped_text(&format_args!("#include &lt;{name}&gt;"))
+            }
+            Some(false) => elem.write_escaped_text(&format_args!("#include &lt;{name}.h&gt;")),
+            None => elem.write_empty(),
         }
     }
 }
 
-impl<'a> Parse<'a> for MacroDefine<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(Self {
-            requires: try_attribute(node, "requires")?,
-            deprecated: try_attribute(node, "deprecated")?,
-            api: try_attribute::<_, false>(node, "api")?,
-            comment: try_attribute(node, "comment")?,
-            ..Self::try_from_node(node)?
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for DefineType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(if let Some(g) = GuardedDefine::try_parse(node)? {
-            Some(Self::GuardedMacro(g))
-        } else {
-            MacroDefine::try_parse(node)?.map(Self::Macro)
-        })
-    }
-}
-
-impl<'a> Parse<'a> for BaseTypeType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(Self::try_from_node(node)?))
-    }
-}
-
-impl<'a> Parse<'a> for BitmaskType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, 'de: 'a> crate::TryFromXML<'de> for BitmaskType<'a> {
+    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
-            api: try_attribute::<_, false>(node, "api")?,
+            api: try_attribute(node, "api")?,
             ..TryFromTokens::try_from_node(node)?
         }))
     }
 }
 
-impl<'a> Parse<'a> for HandleType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(HandleType {
-            obj_type_enum: attribute(node, "objtypeenum")?,
-            parent: try_attribute(node, "parent")?,
-            ..TryFromTokens::try_from_node(node)?
-        }))
-    }
-}
+impl<'a> crate::IntoXMLElement for BitmaskType<'a> {
+    const TAG: &'static str = "type";
 
-impl<'a> Parse<'a> for EnumType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(EnumType {
-            name: attribute(node, "name")?,
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for FnPtrType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(Self {
-            requires: try_attribute(node, "requires")?,
-            ..Self::try_from_node(node)?
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for StructType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(StructType {
-            name: attribute(node, "name")?,
-            returned_only: try_attribute(node, "returnedonly")?,
-            struct_extends: try_attribute(node, "structextends")?.map(crate::CommaSeperated::into),
-            allow_duplicate: try_attribute(node, "allowduplicate")?,
-            members: parse_children(node)?,
-            requires: try_attribute(node, "requires")?,
-            comment: try_attribute(node, "comment")?,
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for UnionType<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(UnionType {
-            name: attribute(node, "name")?,
-            returned_only: try_attribute(node, "returnedonly")?,
-            members: parse_children(node)?,
-            comment: try_attribute(node, "comment")?,
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for Member<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("member") {
-            Ok(Some(Member {
-                base: Parse::parse(node)?,
-                selector: try_attribute::<_, false>(node, "selector")?,
-                selection: try_attribute(node, "selection")?,
-                values: try_attribute(node, "values")?,
-                limit_type: try_attribute::<_, false>(node, "limittype")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for FieldLike<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let dynamic_shape = try_attribute(node, "len")?
-            .map(|len: &str| {
-                Ok(if let Some(latex_expr) = len.strip_prefix("latexmath:") {
-                    // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
-                    let c_expr = attribute(node, "altlen")?;
-                    DynamicShapeKind::Expression {
-                        latex_expr: (latex_expr),
-                        c_expr,
-                    }
-                } else if let Some((l1, l2)) = len.split_once(',') {
-                    DynamicShapeKind::Double(l1.into(), l2.into())
-                } else {
-                    DynamicShapeKind::Single(len.into())
-                })
-            })
-            .transpose()?;
-        Ok(Some(FieldLike {
-            dynamic_shape,
-            extern_sync: try_attribute(node, "externsync")?,
-            optional: try_attribute(node, "optional")?,
-            no_auto_validity: try_attribute::<_, false>(node, "noautovalidity")?,
-            object_type: try_attribute(node, "objecttype")?,
-            api: try_attribute::<_, false>(node, "api")?,
-            deprecated: try_attribute::<_, false>(node, "deprecated")?,
-            ..Self::try_from_node(node)?
-        }))
+    fn write_element<'w, W: ?Sized + crate::XMLWriter>(
+        &self,
+        element: crate::XMLElementBuilder<'static, 'w, W>,
+    ) -> Result<(), W::Error> {
+        element // TODO requires / bitvalues
+            .with_escaped_attribute("bitvalues", &self.bitvalues().as_deref())?
+            .with_escaped_attribute("api", &self.api.as_ref())?
+            .write_tokens(self)
     }
 }

@@ -13,7 +13,7 @@ name = "serialization_test"
 required-features = ["serialize"]
 
 [dependencies]
-roxmltree = "~0.15.0"
+roxmltree = "~0.18.0"
 logos = "~0.12.1"
 peg = "~0.8.1"
 enumflags2 = "~0.7.5"
@@ -22,6 +22,7 @@ impl-trait-for-tuples = "0.2.2"
 serde = { version = "1", features = ["derive"], optional = true }
 serde_with = { version = "2", optional = true }
 quick-xml = { version = "0.25", optional = true }
+vulkan-parse-derive-helper = { path = "vulkan-parse-derive-helper" }
 
 [features]
 default = []
@@ -30,3 +31,6 @@ roundtrip = ["quick-xml"]
 
 [dev-dependencies]
 serde_json = "1"
+
+[workspace]
+members = ["vulkan-parse-derive-helper"]

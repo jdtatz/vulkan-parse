@@ -9,9 +9,10 @@ extern crate serde;
 #[macro_use]
 extern crate serde_with;
 
+#[macro_use]
+extern crate vulkan_parse_derive_helper;
+
 pub mod codegen;
-#[cfg(feature = "roundtrip")]
-pub mod into_xml;
 mod lexer;
 mod parse_xml;
 mod parser;
@@ -24,94 +25,63 @@ pub use crate::{
     typed_registry::*,
 };
 
-pub(crate) fn fmt_write_interspersed<I: Iterator, S: ?Sized + std::fmt::Display>(
-    f: &mut std::fmt::Formatter,
-    values: I,
-    separator: &S,
-) -> std::fmt::Result
-where
-    <I as Iterator>::Item: std::fmt::Display,
-{
-    let mut is_first = true;
-    for v in values {
-        if is_first {
-            is_first = false;
-            write!(f, "{v}")?;
-        } else {
-            write!(f, "{separator}{v}")?;
+pub trait Iterable {
+    type IT<'i>: IntoIterator
+    where
+        Self: 'i;
+    fn iter<'s>(&'s self) -> Self::IT<'s>;
+}
+impl<'a, I: ?Sized + Iterable> Iterable for &'a I {
+    type IT<'i> = I::IT<'i> where Self: 'i, I: 'i;
+
+    fn iter<'s>(&'s self) -> Self::IT<'s> {
+        (*self).iter()
+    }
+}
+
+impl<T> Iterable for [T] {
+    type IT<'i> = &'i [T] where T: 'i;
+
+    fn iter<'s>(&'s self) -> Self::IT<'s> {
+        self
+    }
+}
+impl<T> Iterable for Vec<T> {
+    type IT<'i> = &'i [T] where T: 'i;
+
+    fn iter<'s>(&'s self) -> Self::IT<'s> {
+        self.as_slice()
+    }
+}
+impl<T: enumflags2::BitFlag> Iterable for enumflags2::BitFlags<T> {
+    type IT<'i> = enumflags2::BitFlags<T>;
+
+    fn iter<'s>(&'s self) -> Self::IT<'s> {
+        *self
+    }
+}
+
+#[cfg(feature = "roundtrip")]
+pub mod into_xml {
+    use std::io::{Error as IoError, Write};
+
+    use crate::{Escaped, IntoXML, XMLWriter};
+
+    struct StdXMLWrite<W: Write>(W);
+    impl<W: Write> crate::XMLWriter for StdXMLWrite<W> {
+        type Error = IoError;
+
+        fn write_escaped<V: ?Sized + crate::DisplayEscaped>(
+            &mut self,
+            escaped: &V,
+        ) -> Result<(), Self::Error> {
+            write!(self.0, "{}", Escaped(escaped))
         }
     }
-    Ok(())
-}
 
-pub(crate) trait Container:
-    IntoIterator + FromIterator<<Self as IntoIterator>::Item>
-{
-}
-impl<T: IntoIterator + FromIterator<<Self as IntoIterator>::Item>> Container for T {}
-
-pub(crate) struct Seperated<V, const C: char>(pub V);
-
-impl<V, const C: char> Seperated<V, C> {
-    pub(crate) fn new(v: V) -> Self {
-        Self(v)
-    }
-}
-
-pub(crate) type CommaSeperated<V> = Seperated<V, ','>;
-
-// Rust's orphan rules are difficult
-// impl<V, const C: char> From<Seperated<Self, C>> for V {
-//     fn from(value: Seperated<Self, C>) -> Self {
-//         value.0
-//     }
-// }
-
-impl<T, const C: char> From<Seperated<Self, C>> for Vec<T> {
-    fn from(value: Seperated<Self, C>) -> Self {
-        value.0
-    }
-}
-
-impl<T: enumflags2::BitFlag, const C: char> From<Seperated<Self, C>> for enumflags2::BitFlags<T> {
-    fn from(value: Seperated<Self, C>) -> Self {
-        value.0
-    }
-}
-
-impl<V: Container, const C: char> FromIterator<V::Item> for Seperated<V, C> {
-    fn from_iter<I: IntoIterator<Item = V::Item>>(iter: I) -> Self {
-        Self(V::from_iter(iter))
-    }
-}
-
-impl<V: Container, const C: char> std::str::FromStr for Seperated<V, C>
-where
-    <V as IntoIterator>::Item: std::str::FromStr,
-{
-    type Err = <V::Item as std::str::FromStr>::Err;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.split(C).map(V::Item::from_str).collect()
-    }
-}
-
-impl<'a, V: 'a + Container, const C: char> TryFrom<&'a str> for Seperated<V, C>
-where
-    <V as IntoIterator>::Item: TryFrom<&'a str>,
-{
-    type Error = <V::Item as TryFrom<&'a str>>::Error;
-
-    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
-        s.split(C).map(V::Item::try_from).collect()
-    }
-}
-
-impl<V: Copy + IntoIterator, const C: char> std::fmt::Display for Seperated<V, C>
-where
-    <V as IntoIterator>::Item: std::fmt::Display,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt_write_interspersed(f, self.0.into_iter(), &C)
+    pub fn into_xml<W: Write>(reg: &crate::Registry, to: W) -> Result<(), IoError> {
+        let mut writer = StdXMLWrite(to);
+        writer.write_declaration("1.0", Some("UTF-8"), None)?;
+        reg.write_xml(&mut writer)
     }
 }

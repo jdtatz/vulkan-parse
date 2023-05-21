@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     num::{NonZeroU8, ParseIntError},
     str::FromStr,
@@ -6,76 +7,108 @@ use std::{
 use roxmltree::Node;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
-use crate::{attribute, parse_children, try_attribute, Expression, Parse, ParseResult};
+use crate::{Expression, UnescapedStr};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "enums")]
 pub struct Enums<'a> {
     /// name of the corresponding <type> associated with this group
+    #[xml(attribute())]
     pub name: &'a str,
     /// bit width of the enum value type. If omitted, a default value of 32 is used.
+    #[xml(attribute(rename = "bitwidth"))]
     pub bit_width: Option<NonZeroU8>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<&'a str>,
+    #[xml(attribute())]
+    pub comment: Option<UnescapedStr<'a>>,
+    #[xml(flatten)]
     pub values: EnumsValues<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "enums")]
 pub enum EnumsValues<'a> {
-    // no type attribute
-    /// Hardcoded constants, not an enumerated type
-    Constants(CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>),
     // type="enum"
     /// An enum where each value is distinct
-    Enum(
-        CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>,
-        Option<UnusedEnum<'a>>,
-    ),
+    #[xml(discriminant(attr = "type", value = "enum"))]
+    Enum {
+        #[xml(child)]
+        values: CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>,
+        #[xml(child)]
+        unused_values: Option<UnusedEnum<'a>>,
+    },
     // type="bitmask"
     /// An enum where the values constitute a bitmask
-    Bitmask(CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>),
+    #[xml(discriminant(attr = "type", value = "bitmask"))]
+    Bitmask {
+        #[xml(child)]
+        values: CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>,
+    },
+    // no type attribute
+    /// Hardcoded constants, not an enumerated type
+    Constants {
+        #[xml(child)]
+        constants: CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "enum")]
 pub struct ConstantEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
+    #[xml(attribute())]
     pub name: &'a str,
     /// a C scalar type corresponding to the type of `value`, although only uint32_t, uint64_t, and float are currently meaningful
+    #[xml(attribute(rename = "type"))]
     pub type_name: &'a str,
     /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
+    #[xml(attribute())]
     pub value: Expression<'a>,
     /// descriptive text with no semantic meaning
-    pub comment: Option<&'a str>,
+    #[xml(attribute())]
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "enum")]
 pub struct ValueEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
+    #[xml(attribute())]
     pub name: &'a str,
     /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
+    #[xml(attribute(mapped = "RadixInt"))]
     pub value: i64,
     /// descriptive text with no semantic meaning
-    pub comment: Option<&'a str>,
+    #[xml(attribute())]
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "enum")]
 pub struct BitPosEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
+    #[xml(attribute())]
     pub name: &'a str,
     /// literal integer bit position in a bitmask
+    #[xml(attribute())]
     pub bitpos: u8,
     /// descriptive text with no semantic meaning
-    pub comment: Option<&'a str>,
+    #[xml(attribute())]
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "enum")]
 pub enum BitmaskEnum<'a> {
+    #[xml(discriminant(attr = "value"))]
     Value(ValueEnum<'a>),
+    #[xml(discriminant(attr = "bitpos"))]
     BitPos(BitPosEnum<'a>),
 }
 
@@ -88,67 +121,29 @@ impl<'a> BitmaskEnum<'a> {
         }
     }
     #[must_use]
-    pub fn comment(&self) -> Option<&&'a str> {
+    pub fn comment(&self) -> Option<UnescapedStr<'a>> {
         match self {
-            BitmaskEnum::Value(v) => v.comment.as_ref(),
-            BitmaskEnum::BitPos(b) => b.comment.as_ref(),
+            BitmaskEnum::Value(v) => v.comment.clone(),
+            BitmaskEnum::BitPos(b) => b.comment.clone(),
         }
     }
 }
 
 // <enums type="enum"> ... <unused /> </<enums>
 /// defines a range of enumerants not currently being used
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "unused")]
 pub struct UnusedEnum<'a> {
     /// defines a single unused enumerant
+    #[xml(attribute(mapped = "RadixInt"))]
     pub start: i64,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
 }
 
-impl<'a> Parse<'a> for Enums<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(Enums {
-            name: attribute(node, "name")?,
-            bit_width: try_attribute(node, "bitwidth")?,
-            comment: try_attribute(node, "comment")?,
-            values: Parse::parse(node)?,
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for EnumsValues<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        let ty_attr = try_attribute(node, "type")?;
-        match ty_attr {
-            None => Ok(Some(Self::Constants(parse_children(node)?))),
-            Some("enum") => {
-                let (values, unused) = parse_children(node)?;
-                Ok(Some(Self::Enum(values, unused)))
-            }
-            Some("bitmask") => Ok(Some(Self::Bitmask(parse_children(node)?))),
-            _ => Ok(None),
-        }
-    }
-}
-
-impl<'a> Parse<'a> for ConstantEnum<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("enum") {
-            Ok(Some(ConstantEnum {
-                name: attribute(node, "name")?,
-                type_name: attribute(node, "type")?,
-                value: attribute(node, "value")?,
-                comment: try_attribute(node, "comment")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, TryFromEscapedStr, DisplayEscaped)]
 struct RadixInt(i64);
 
 impl FromStr for RadixInt {
@@ -167,61 +162,20 @@ impl FromStr for RadixInt {
     }
 }
 
+impl fmt::Display for RadixInt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl From<RadixInt> for i64 {
     fn from(value: RadixInt) -> Self {
         value.0
     }
 }
 
-impl<'a> Parse<'a> for ValueEnum<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("enum") {
-            Ok(Some(ValueEnum {
-                name: attribute(node, "name")?,
-                value: RadixInt::into(attribute(node, "value")?),
-                comment: try_attribute(node, "comment")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for BitmaskEnum<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("enum") {
-            if node.has_attribute("value") {
-                Ok(Some(BitmaskEnum::Value(Parse::parse(node)?)))
-            } else if node.has_attribute("bitpos") {
-                Ok(Some(BitmaskEnum::BitPos(Parse::parse(node)?)))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for BitPosEnum<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(Some(BitPosEnum {
-            name: attribute(node, "name")?,
-            bitpos: attribute(node, "bitpos")?,
-            comment: try_attribute(node, "comment")?,
-        }))
-    }
-}
-
-impl<'a> Parse<'a> for UnusedEnum<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("unused") {
-            Ok(Some(UnusedEnum {
-                start: RadixInt::into(attribute(node, "start")?),
-                comment: try_attribute(node, "comment")?,
-            }))
-        } else {
-            Ok(None)
-        }
+impl From<&i64> for RadixInt {
+    fn from(value: &i64) -> Self {
+        Self(*value)
     }
 }

@@ -2,15 +2,22 @@ use core::fmt;
 
 use roxmltree::Node;
 
-use super::common::{CommentendChildren, SemVarVersion};
-use crate::{
-    attribute, parse_children, try_attribute, AliasDeprecationKind, Expression, Parse, ParseResult,
-    StdVersion,
-};
+use super::common::{AliasDeprecationKind, CommentendChildren, SemVarVersion};
+use crate::{try_attribute, Expression, ParseResult, StdVersion, XMLElementBuilder};
 
 #[enumflags2::bitflags]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum VulkanApi {
     #[strum(serialize = "vulkan")]
@@ -25,12 +32,12 @@ pub enum VulkanApi {
 // "VK_KHR_swapchain+VK_KHR_get_surface_capabilities2+(VK_KHR_get_physical_device_properties2,VK_VERSION_1_1)"
 // "VK_KHR_swapchain+(VK_KHR_maintenance2,VK_VERSION_1_1)+(VK_KHR_image_format_list,VK_VERSION_1_2)"
 /// list of versions / extension names seperated by '+', ',', and/or paranthized
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct VulkanDependencies<'a>(&'a str);
 
-impl<'a> From<&'a str> for VulkanDependencies<'a> {
-    fn from(value: &'a str) -> Self {
+impl<'a, 'de: 'a> From<&'de str> for VulkanDependencies<'a> {
+    fn from(value: &'de str) -> Self {
         VulkanDependencies(value)
     }
 }
@@ -41,22 +48,28 @@ impl fmt::Display for VulkanDependencies<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "feature")]
 pub struct Feature<'a> {
     /// version C preprocessor name
+    #[xml(attribute())]
     pub name: &'a str,
     /// API tag used internally, not necessarily an actual API name
+    #[xml(attribute(seperator = "crate::CommaSeperator"))]
     pub api: enumflags2::BitFlags<VulkanApi>,
     /// version number
+    #[xml(attribute())]
     pub number: SemVarVersion,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
     /// features to require/remove in this version
+    #[xml(child)]
     pub children: Vec<FeatureChild<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum FeatureChild<'a> {
     /// features to require in this version
@@ -65,63 +78,99 @@ pub enum FeatureChild<'a> {
     Remove(Remove<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "require")]
 pub struct Require<'a> {
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
     /// API feature name
+    #[xml(attribute())]
     pub feature: Option<StdVersion>,
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
+    #[xml(attribute(rename = "depends"))]
     pub dependencies: Option<VulkanDependencies<'a>>,
+    #[xml(child)]
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "remove")]
 pub struct Remove<'a> {
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
     /// API feature name
+    #[xml(attribute())]
     pub feature: Option<StdVersion>,
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
+    #[xml(attribute(rename = "depends"))]
     pub dependencies: Option<VulkanDependencies<'a>>,
+    #[xml(child)]
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum RequireValue<'a> {
+    #[xml(tag = "type")]
     Type {
+        #[xml(attribute())]
         name: &'a str,
         /// descriptive text with no semantic meaning
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
+    #[xml(tag = "command")]
     Command {
+        #[xml(attribute())]
         name: &'a str,
         /// descriptive text with no semantic meaning
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
     Enum(RequireEnum<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "enum")]
 pub struct RequireEnum<'a> {
+    #[xml(attribute())]
     pub name: Option<&'a str>,
     /// name of a separately defined enumerated type to which the extension enumerant is added
+    #[xml(attribute())]
     pub extends: Option<&'a str>,
-    /// If `None` then it's a Refrence Enum, otherwise it's an Exstension Enum
+    /// If `None` then it's a Refrence Enum, otherwise it's an Extension Enum
+    #[xml(attribute(flattened))]
     pub value: Option<RequireValueEnum<'a>>,
     /// preprocessor protection symbol for the enum
+    #[xml(attribute())]
     pub protect: Option<&'a str>,
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
+    #[xml(attribute())]
     pub deprecated: Option<AliasDeprecationKind>,
     /// descriptive text with no semantic meaning
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum OffsetDirection {
     #[strum(serialize = "-")]
@@ -146,108 +195,46 @@ pub enum RequireValueEnum<'a> {
     Bitpos(u8),
 }
 
-impl<'a> Parse<'a> for Feature<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("feature") {
-            Ok(Some(Feature {
-                name: attribute(node, "name")?,
-                api: attribute::<_, false>(node, "api").map(crate::CommaSeperated::into)?,
-                number: attribute(node, "number")?,
-                comment: try_attribute(node, "comment")?,
-                children: parse_children(node)?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for FeatureChild<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        Ok(if let Some(v) = Parse::try_parse(node)? {
-            Some(FeatureChild::Require(v))
-        } else if let Some(v) = Parse::try_parse(node)? {
-            Some(FeatureChild::Remove(v))
-        } else {
-            None
-        })
-    }
-}
-
-impl<'a> Parse<'a> for Require<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("require") {
-            Ok(Some(Require {
-                feature: try_attribute(node, "feature")?,
-                dependencies: try_attribute(node, "depends")?,
-                api: try_attribute::<_, false>(node, "api")?,
-                comment: try_attribute(node, "comment")?,
-                values: parse_children(node)?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for Remove<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("remove") {
-            Ok(Some(Remove {
-                feature: try_attribute(node, "feature")?,
-                dependencies: try_attribute(node, "depends")?,
-                api: try_attribute::<_, false>(node, "api")?,
-                comment: try_attribute(node, "comment")?,
-                values: parse_children(node)?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for RequireValue<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        match node.tag_name().name() {
-            "type" => Ok(Some(RequireValue::Type {
-                name: attribute(node, "name")?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "command" => Ok(Some(RequireValue::Command {
-                name: attribute(node, "name")?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "enum" => Ok(Some(RequireValue::Enum(RequireEnum {
-                name: try_attribute(node, "name")?,
-                extends: try_attribute(node, "extends")?,
-                protect: try_attribute(node, "protect")?,
-                value: Parse::try_parse(node)?,
-                api: try_attribute::<_, false>(node, "api")?,
-                deprecated: try_attribute::<_, false>(node, "deprecated")?,
-                comment: try_attribute(node, "comment")?,
-            }))),
-            _ => Ok(None),
-        }
-    }
-}
-
-impl<'a> Parse<'a> for RequireValueEnum<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for RequireValueEnum<'a> {
+    fn from_attributes<'input: 'xml>(
+        node: Node<'xml, 'input>,
+    ) -> ParseResult<Result<Self, &'static [&'static str]>> {
         if let Some(value) = try_attribute(node, "value")? {
-            Ok(Some(RequireValueEnum::Value(value)))
+            Ok(Ok(RequireValueEnum::Value(value)))
         } else if let Some(alias) = try_attribute(node, "alias")? {
-            Ok(Some(RequireValueEnum::Alias(alias)))
+            Ok(Ok(RequireValueEnum::Alias(alias)))
         } else if let Some(offset) = try_attribute(node, "offset")? {
-            Ok(Some(RequireValueEnum::Offset {
+            Ok(Ok(RequireValueEnum::Offset {
                 // extnumber: attribute(node, "extnumber")?,
                 extnumber: try_attribute(node, "extnumber")?,
                 offset,
-                direction: try_attribute::<_, false>(node, "dir")?,
+                direction: try_attribute(node, "dir")?,
             }))
         } else if let Some(bitpos) = try_attribute(node, "bitpos")? {
-            Ok(Some(RequireValueEnum::Bitpos(bitpos)))
+            Ok(Ok(RequireValueEnum::Bitpos(bitpos)))
         } else {
-            Ok(None)
+            Ok(Err(&["value", "alias", "offset", "bitpos"]))
+        }
+    }
+}
+
+impl<'a> crate::IntoXMLAttributes for RequireValueEnum<'a> {
+    fn write_attributes<'t, 'w, W: ?Sized + crate::XMLWriter>(
+        &self,
+        element: XMLElementBuilder<'t, 'w, W>,
+    ) -> Result<XMLElementBuilder<'t, 'w, W>, W::Error> {
+        match self {
+            RequireValueEnum::Value(v) => element.with_escaped_attribute("value", v),
+            RequireValueEnum::Alias(v) => element.with_escaped_attribute("alias", v),
+            RequireValueEnum::Offset {
+                extnumber,
+                offset,
+                direction,
+            } => element
+                .with_escaped_attribute("offset", offset)?
+                .with_escaped_attribute("extnumber", extnumber)?
+                .with_escaped_attribute("dir", direction),
+            RequireValueEnum::Bitpos(v) => element.with_escaped_attribute("bitpos", v),
         }
     }
 }

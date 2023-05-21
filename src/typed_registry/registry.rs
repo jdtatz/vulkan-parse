@@ -2,7 +2,7 @@ use roxmltree::Node;
 
 use super::{
     commands_registry::Command,
-    common::{CommentendChildren, DefinitionOrAlias, MaybeComment},
+    common::{CommentendChildren, DefinitionOrAlias},
     enums_registry::Enums,
     extension_registry::{Extension, PseudoExtension},
     feature_registry::Feature,
@@ -10,167 +10,110 @@ use super::{
     spirv_registry::{SpirvCapability, SpirvExtension},
     types_registry::Type,
 };
-use crate::{attribute, parse_children, try_attribute, Parse, ParseResult};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct Registry<'a>(pub CommentendChildren<'a, Items<'a>>);
+#[xml(tag = "registry")]
+pub struct Registry<'a> {
+    #[xml(child)]
+    pub registry: CommentendChildren<'a, Items<'a>>,
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum Items<'a> {
+    #[xml(tag = "platforms")]
     Platforms {
+        #[xml(child)]
         platforms: Vec<Platform<'a>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
+    #[xml(tag = "tags")]
     Tags {
+        #[xml(child)]
         tags: Vec<Tag<'a>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
+    #[xml(tag = "types")]
     Types {
+        #[xml(child)]
         types: CommentendChildren<'a, Type<'a>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
     Enums(Enums<'a>),
+    #[xml(tag = "commands")]
     Commands {
+        #[xml(child)]
         commands: CommentendChildren<'a, DefinitionOrAlias<'a, Command<'a>>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
     Features(Feature<'a>),
+    #[xml(tag = "extensions")]
     Extensions {
+        #[xml(child)]
         extensions: Vec<WrappedExtension<'a>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
-    Formats(Vec<Format<'a>>),
+    #[xml(tag = "formats")]
+    Formats {
+        #[xml(child)]
+        formats: Vec<Format<'a>>,
+    },
+    #[xml(tag = "spirvextensions")]
     SpirvExtensions {
+        #[xml(child)]
         extensions: Vec<SpirvExtension<'a>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
+    #[xml(tag = "spirvcapabilities")]
     SpirvCapabilities {
+        #[xml(child)]
         capabilities: Vec<SpirvCapability<'a>>,
+        #[xml(attribute())]
         comment: Option<&'a str>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "platform")]
 pub struct Platform<'a> {
     /// name of the platform, used as part of extension names
+    #[xml(attribute())]
     pub name: &'a str,
     /// preprocessor symbol to include platform headers from <vulkan.h>
+    #[xml(attribute())]
     pub protect: &'a str,
     /// platform description
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "tag")]
 pub struct Tag<'a> {
+    #[xml(attribute())]
     pub name: &'a str,
     /// name of the author (usually a company or project name)
+    #[xml(attribute())]
     pub author: &'a str,
     /// contact responsible for the tag (name and contact information)
+    #[xml(attribute())]
     pub contact: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "extension")]
 pub enum WrappedExtension<'a> {
+    #[xml(discriminant(attr = "number"))]
     Extension(Extension<'a>),
     PseudoExtension(PseudoExtension<'a>),
-}
-
-impl<'a> FromIterator<MaybeComment<'a, Items<'a>>> for Registry<'a> {
-    fn from_iter<T: IntoIterator<Item = MaybeComment<'a, Items<'a>>>>(iter: T) -> Self {
-        Self(CommentendChildren(iter.into_iter().collect()))
-    }
-}
-
-impl<'a> Parse<'a> for Registry<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("registry") {
-            parse_children(node).map(Self).map(Some)
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for Items<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        match node.tag_name().name() {
-            "platforms" => Ok(Some(Items::Platforms {
-                platforms: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "tags" => Ok(Some(Items::Tags {
-                tags: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "types" => Ok(Some(Items::Types {
-                types: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "enums" => Ok(Some(Items::Enums(Parse::parse(node)?))),
-            "commands" => Ok(Some(Items::Commands {
-                commands: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "feature" => Ok(Some(Items::Features(Parse::parse(node)?))),
-            "extensions" => Ok(Some(Items::Extensions {
-                extensions: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "formats" => Ok(Some(Items::Formats(parse_children(node)?))),
-            "spirvextensions" => Ok(Some(Items::SpirvExtensions {
-                extensions: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            "spirvcapabilities" => Ok(Some(Items::SpirvCapabilities {
-                capabilities: parse_children(node)?,
-                comment: try_attribute(node, "comment")?,
-            })),
-            _ => Ok(None),
-        }
-    }
-}
-
-impl<'a> Parse<'a> for Platform<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("platform") {
-            Ok(Some(Platform {
-                name: attribute(node, "name")?,
-                protect: attribute(node, "protect")?,
-                comment: try_attribute(node, "comment")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for Tag<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("tag") {
-            Ok(Some(Tag {
-                name: attribute(node, "name")?,
-                author: attribute(node, "author")?,
-                contact: attribute(node, "contact")?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for WrappedExtension<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(e) = Extension::try_parse(node)? {
-            Ok(Some(Self::Extension(e)))
-        } else if let Some(e) = PseudoExtension::try_parse(node)? {
-            Ok(Some(Self::PseudoExtension(e)))
-        } else {
-            Ok(None)
-        }
-    }
 }

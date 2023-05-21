@@ -1,13 +1,14 @@
 use std::{
+    borrow::Cow,
     fmt, iter,
     num::{NonZeroU32, NonZeroU8},
     ops::Deref,
 };
 
 use crate::{
-    lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, ErrorKind, FieldLike,
-    FieldLikeSizing, FnPtrType, HandleKind, HandleType, MacroDefine, MacroDefineValue, ParseResult,
-    PointerKind, Token,
+    lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, DisplayEscaped, ErrorKind,
+    FieldLike, FieldLikeSizing, FnPtrType, HandleKind, HandleType, MacroDefine, MacroDefineValue,
+    ParseResult, PointerKind, Token, UnescapedStr,
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -156,7 +157,7 @@ pub enum MemberAccess {
     Pointer,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum Expression<'a> {
     Identifier(&'a str),
@@ -291,6 +292,17 @@ impl fmt::Display for Expression<'_> {
     }
 }
 
+impl DisplayEscaped for Expression<'_> {
+    fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut tokens = Vec::new();
+        self.yield_tokens(&mut tokens, false);
+        for token in tokens {
+            token.escaped_fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a> Expression<'a> {
     pub fn yield_tokens(&self, tokens: &mut Vec<Token<'a>>, is_inner: bool) {
         match self {
@@ -384,7 +396,10 @@ impl<'a> Expression<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VkXMLToken<'a> {
     C(Token<'a>),
-    TextTag { name: &'a str, text: &'a str },
+    TextTag {
+        name: &'a str,
+        text: crate::UnescapedStr<'a>,
+    },
 }
 
 impl<'a> From<Token<'a>> for VkXMLToken<'a> {
@@ -438,33 +453,22 @@ fn vk_token_flat_map<'a, 'input: 'a>(
     objc_compat: bool,
 ) -> impl IntoIterator<Item = ParseResult<VkXMLToken<'a>>> {
     // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
-    let text = n.text().unwrap_or("");
     if n.is_element() {
+        let text = n
+            .text_storage()
+            .map(crate::UnescapedStr::from)
+            .unwrap_or_default();
         Either::Left(iter::once(Ok(VkXMLToken::TextTag {
             name: n.tag_name().name(),
             text,
         })))
     } else {
-        Either::Right(
-            tokenize(text, parsing_macros, objc_compat)
-                .into_iter()
-                .map(move |r| {
-                    r.map(VkXMLToken::C)
-                        .map_err(|e| ErrorKind::LexerError(e, n.id()))
-                }),
-        )
+        let text = n.text().unwrap_or("");
+        Either::Right(tokenize(text, parsing_macros, objc_compat).map(move |r| {
+            r.map(VkXMLToken::C)
+                .map_err(|e| ErrorKind::LexerError(e, n.id()))
+        }))
     }
-}
-
-fn vk_tokenize<'a, 'input: 'a>(
-    node: roxmltree::Node<'a, 'input>,
-    parsing_macros: bool,
-    objc_compat: bool,
-) -> ParseResult<VkXMLTokens<'a>> {
-    node.children()
-        .filter(|n| n.is_element() || n.is_text())
-        .flat_map(|n| vk_token_flat_map(n, parsing_macros, objc_compat))
-        .collect()
 }
 
 impl<'a> peg::Parse for VkXMLTokens<'a> {
@@ -484,7 +488,7 @@ impl<'a> peg::Parse for VkXMLTokens<'a> {
 
 pub type ParseError = peg::error::ParseError<<VkXMLTokens<'static> as peg::Parse>::PositionRepr>;
 
-pub trait TryFromTokens<'a>: 'a + Sized {
+pub trait TryFromTokens<'a>: Sized {
     const PARSING_MACROS: bool;
     const OBJC_COMPAT: bool;
 
@@ -658,7 +662,7 @@ peg::parser! {
 
         // C vk.xml exts
         rule type_tag() -> &'a str
-          = quiet!{[VkXMLToken::TextTag { name: "type", text }] { text }}
+          = quiet!{[VkXMLToken::TextTag { name: "type", text: UnescapedStr(Cow::Borrowed(text)) }] { text }}
           / expected!("<type>...</type>")
 
         // handle pointer info, can be '*' or '**' or '* const*'
@@ -677,15 +681,15 @@ peg::parser! {
             }
 
         rule name_tag() -> &'a str
-         = quiet!{[VkXMLToken::TextTag { name: "name", text }] { text }}
+         = quiet!{[VkXMLToken::TextTag { name: "name", text: UnescapedStr(Cow::Borrowed(text)) }] { text }}
          / expected!("<name>...</name>")
 
         rule enum_tag() -> &'a str
-         = quiet!{[VkXMLToken::TextTag { name: "enum", text }] { text }}
+         = quiet!{[VkXMLToken::TextTag { name: "enum", text: UnescapedStr(Cow::Borrowed(text)) }] { text }}
          / expected!("<enum>...</enum>")
 
-        rule comment_tag() -> &'a str
-         = quiet!{[VkXMLToken::TextTag { name: "comment", text }] { text }}
+        rule comment_tag() -> UnescapedStr<'a>
+         = quiet!{[VkXMLToken::TextTag { name: "comment", text }] { text.clone() }}
          / expected!("<comment>...</comment>")
 
         rule integer() -> u64
@@ -703,7 +707,7 @@ peg::parser! {
             )? comment:comment_tag()? {
                 FieldLike {
                     sizing,
-                    comment,
+                    comment: comment.map(UnescapedStr::from),
                     ..typed
                 }
             }
@@ -754,11 +758,11 @@ peg::parser! {
           ) ")" ";" { FnPtrType { name, return_type_name, return_type_pointer_kind, params, requires: None } }
 
         rule dispatchable_handle_kind() -> HandleKind
-          = quiet!{[VkXMLToken::TextTag { name: "type", text: "VK_DEFINE_HANDLE" }] { HandleKind::Dispatch }}
+          = quiet!{[VkXMLToken::TextTag { name: "type", text: UnescapedStr(Cow::Borrowed("VK_DEFINE_HANDLE")) }] { HandleKind::Dispatch }}
           / expected!("<type>VK_DEFINE_HANDLE</type>")
 
         rule non_dispatchable_handle_kind() -> HandleKind
-          = quiet!{[VkXMLToken::TextTag { name: "type", text: "VK_DEFINE_NON_DISPATCHABLE_HANDLE" }] { HandleKind::NoDispatch }}
+          = quiet!{[VkXMLToken::TextTag { name: "type", text: UnescapedStr(Cow::Borrowed("VK_DEFINE_NON_DISPATCHABLE_HANDLE")) }] { HandleKind::NoDispatch }}
           / expected!("<type>VK_DEFINE_NON_DISPATCHABLE_HANDLE</type>")
 
         rule handle_kind() -> HandleKind = dispatchable_handle_kind() / non_dispatchable_handle_kind()
@@ -768,11 +772,11 @@ peg::parser! {
           = handle_kind:handle_kind() "(" name:name_tag() ")" { HandleType { name, handle_kind, obj_type_enum: "", parent: None } }
 
         rule bitmask_flags() -> bool
-            = quiet!{[VkXMLToken::TextTag { name: "type", text: "VkFlags" }] { false }}
+            = quiet!{[VkXMLToken::TextTag { name: "type", text: UnescapedStr(Cow::Borrowed("VkFlags")) }] { false }}
             / expected!("<type>VkFlags</type>")
 
         rule bitmask64_flags() -> bool
-            = quiet!{[VkXMLToken::TextTag { name: "type", text: "VkFlags64" }] { true }}
+            = quiet!{[VkXMLToken::TextTag { name: "type", text: UnescapedStr(Cow::Borrowed("VkFlags64")) }] { true }}
             / expected!("<type>VkFlags64</type>")
 
         /// <type category="bitmask">
@@ -805,12 +809,11 @@ impl std::error::Error for TextError {
     }
 }
 
-impl<'a> TryFrom<&'a str> for Expression<'a> {
+impl<'a, 'de: 'a> TryFrom<&'de str> for Expression<'a> {
     type Error = TextError;
 
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(value: &'de str) -> Result<Self, Self::Error> {
         let c_toks = tokenize(value, false, false)
-            .into_iter()
             .collect::<Result<_, _>>()
             .map_err(TextError::Lexer)?;
         c_with_vk_ext::expr(&c_toks).map_err(TextError::Parser)
@@ -897,7 +900,7 @@ macro_rules! into_vkxml_tokens {
         {
             $tokens.push(VkXMLToken::TextTag {
                 name: stringify!($tag),
-                text: $e.into(),
+                text: $e.clone().into(),
             });
             $(into_vkxml_tokens!(@ $tokens $($tail)*))?
         }
@@ -955,11 +958,11 @@ impl<'t, 's, 'a: 't + 's, const NAME_IS_TAG: bool> IntoVkXMLTokens<'t>
     }
 }
 
-impl<'a> TryFromTokens<'a> for FieldLike<'a> {
+impl<'a, 'xml: 'a> TryFromTokens<'xml> for FieldLike<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'xml>) -> Result<Self, ParseError> {
         c_with_vk_ext::field_like(tokens)
     }
 }
@@ -986,7 +989,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FieldLike<'a> {
                 Some(FieldLikeSizing::ArrayShape(array_shape)) => [array_shape],
                 None => [],
             },
-            match self.comment => {
+            match self.comment.clone() => {
                 Some(comment) => [comment = comment],
                 None => [],
             }
@@ -994,11 +997,11 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FieldLike<'a> {
     }
 }
 
-impl<'a> TryFromTokens<'a> for BaseTypeType<'a> {
+impl<'a, 'xml: 'a> TryFromTokens<'xml> for BaseTypeType<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = true;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'xml>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_basetype(tokens)
     }
 }
@@ -1013,11 +1016,11 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ BaseTypeType<'a> {
     }
 }
 
-impl<'a> TryFromTokens<'a> for MacroDefine<'a> {
+impl<'a, 'xml: 'a> TryFromTokens<'xml> for MacroDefine<'a> {
     const PARSING_MACROS: bool = true;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'xml>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_define(tokens)
     }
 }
@@ -1046,11 +1049,11 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ MacroDefine<'a> {
     }
 }
 
-impl<'a> TryFromTokens<'a> for FnPtrType<'a> {
+impl<'a, 'xml: 'a> TryFromTokens<'xml> for FnPtrType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'xml>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_funcptr(tokens)
     }
 }
@@ -1077,11 +1080,11 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FnPtrType<'a> {
     }
 }
 
-impl<'a> TryFromTokens<'a> for HandleType<'a> {
+impl<'a, 'xml: 'a> TryFromTokens<'xml> for HandleType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'xml>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_handle(tokens)
     }
 }
@@ -1092,11 +1095,11 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ HandleType<'a> {
     }
 }
 
-impl<'a> TryFromTokens<'a> for BitmaskType<'a> {
+impl<'a, 'xml: 'a> TryFromTokens<'xml> for BitmaskType<'a> {
     const PARSING_MACROS: bool = false;
     const OBJC_COMPAT: bool = false;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError> {
+    fn try_from_tokens(tokens: &VkXMLTokens<'xml>) -> Result<Self, ParseError> {
         c_with_vk_ext::type_bitmask(tokens)
     }
 }

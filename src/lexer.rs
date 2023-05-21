@@ -1,3 +1,4 @@
+use core::fmt::Debug;
 use std::{fmt, ops::Range, str::FromStr};
 
 use logos::{Lexer, Logos};
@@ -637,6 +638,26 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Error => unreachable!(),
         }?;
         Ok(())
+    }
+}
+
+impl<'a> crate::DisplayEscaped for Token<'a> {
+    fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Point => write!(f, "-&gt;"),
+            Token::Ampersand => write!(f, "&amp;"),
+            Token::And => write!(f, "&amp;&amp;"),
+            Token::LShift => write!(f, "&lt;&lt;"),
+            Token::RShift => write!(f, "&gt;&gt;"),
+            Token::LessThan => write!(f, "&lt;"),
+            Token::GreaterThan => write!(f, "&gt;"),
+            Token::LessThanEqual => write!(f, "&lt;="),
+            Token::GreaterThanEqual => write!(f, "&gt;="),
+            Token::AndAssign => write!(f, "&amp;="),
+            Token::Constant(Constant::Char(c)) => write!(f, "&apos;{c}&apos;"),
+            Token::Literal(lit) => write!(f, "&quot;{lit}&quot;"),
+            t => fmt::Display::fmt(t, f),
+        }
     }
 }
 

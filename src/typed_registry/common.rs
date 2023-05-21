@@ -6,18 +6,23 @@ use std::{
 };
 
 use roxmltree::Node;
+use vulkan_parse_derive_helper::DisplayEscaped;
 
-use crate::{attribute, try_attribute, Parse, ParseChildren, ParseResult, VulkanApi};
+use crate::{attribute, try_attribute, ParseChildren, ParseResult, UnescapedStr, VulkanApi};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct Comment<'a>(pub &'a str);
+#[xml(tag = "comment")]
+pub struct Comment<'a> {
+    #[xml(text)]
+    pub comment: UnescapedStr<'a>,
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum MaybeComment<'a, T> {
-    Value(T),
     Comment(Comment<'a>),
+    Value(T),
 }
 
 impl<'a, T> MaybeComment<'a, T> {
@@ -70,7 +75,30 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, strum::EnumString, strum::Display)]
+impl<'node, T: crate::TryFromXML<'node>> ParseChildren<'node> for CommentendChildren<'node, T> {
+    fn from_children<'input: 'node>(
+        it: &mut crate::PeekableChildrenElements<'node, 'input>,
+    ) -> ParseResult<Self> {
+        ParseChildren::from_children(it).map(CommentendChildren)
+    }
+}
+
+impl<'xml, T: crate::IntoXML> crate::IntoXMLChildren for CommentendChildren<'xml, T> {
+    fn write_children<W: ?Sized + crate::XMLWriter>(&self, writer: &mut W) -> Result<(), W::Error> {
+        self.0.write_children(writer)
+    }
+}
+
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum AliasDeprecationKind {
     /// deprecated="aliased"
@@ -78,24 +106,66 @@ pub enum AliasDeprecationKind {
     Aliased,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Alias<'a> {
+    #[xml(attribute())]
     pub name: &'a str,
+    #[xml(attribute())]
     pub alias: &'a str,
+    #[xml(attribute())]
     pub api: Option<VulkanApi>,
+    #[xml(attribute())]
     pub deprecated: Option<AliasDeprecationKind>,
+    #[xml(attribute())]
     pub comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DefinitionOrAlias<'a, T> {
+    // #[xml(discriminant(attr="alias"))]
     Alias(Alias<'a>),
     Definition(T),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+impl<'a, 'de: 'a, T: crate::TryFromXML<'de>> crate::TryFromXML<'de> for DefinitionOrAlias<'a, T> {
+    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
+        if let Some(alias) = try_attribute(node, "alias")? {
+            Ok(Some(DefinitionOrAlias::Alias(Alias {
+                name: attribute(node, "name")?,
+                alias,
+                api: try_attribute(node, "api")?,
+                deprecated: try_attribute(node, "deprecated")?,
+                comment: try_attribute(node, "comment")?,
+            })))
+        } else {
+            Ok(T::try_from_xml(node)?.map(DefinitionOrAlias::Definition))
+        }
+    }
+}
+
+impl<'a, T: crate::IntoXMLElement> crate::IntoXMLElement for DefinitionOrAlias<'a, T> {
+    const TAG: &'static str = T::TAG;
+
+    fn add_static_attrs<'w, W: ?Sized + crate::XMLWriter>(
+        element: crate::XMLElementBuilder<'static, 'w, W>,
+    ) -> Result<crate::XMLElementBuilder<'static, 'w, W>, W::Error> {
+        T::add_static_attrs(element)
+    }
+
+    fn write_element<'w, W: ?Sized + crate::XMLWriter>(
+        &self,
+        element: crate::XMLElementBuilder<'static, 'w, W>,
+    ) -> Result<(), W::Error> {
+        match self {
+            DefinitionOrAlias::Alias(alias) => alias.write_element(element),
+            DefinitionOrAlias::Definition(defn) => defn.write_element(element),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct SemVarVersion {
     pub major: u32,
@@ -141,7 +211,7 @@ impl fmt::Display for SemVarVersion {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct StdVersion {
     pub major: u32,
@@ -208,49 +278,5 @@ impl FromStr for StdVersion {
 impl fmt::Display for StdVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "VK_VERSION_{}_{}", self.major, self.minor)
-    }
-}
-
-impl<'a, T: Parse<'a>> Parse<'a> for MaybeComment<'a, T> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(v) = T::try_parse(node)? {
-            Ok(Some(MaybeComment::Value(v)))
-        } else {
-            Ok(Comment::try_parse(node)?.map(MaybeComment::Comment))
-        }
-    }
-}
-
-impl<'node, T: 'node + Parse<'node>> ParseChildren<'node> for CommentendChildren<'node, T> {
-    fn from_children<'input: 'node>(
-        it: &mut crate::PeekableChildrenElements<'node, 'input>,
-    ) -> ParseResult<Self> {
-        ParseChildren::from_children(it).map(CommentendChildren)
-    }
-}
-
-impl<'a> Parse<'a> for Comment<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("comment") {
-            Ok(Some(Comment(node.text().unwrap_or(""))))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a, T: Parse<'a>> Parse<'a> for DefinitionOrAlias<'a, T> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(alias) = try_attribute(node, "alias")? {
-            Ok(Some(DefinitionOrAlias::Alias(Alias {
-                name: attribute(node, "name")?,
-                alias,
-                api: try_attribute::<_, false>(node, "api")?,
-                deprecated: try_attribute::<_, false>(node, "deprecated")?,
-                comment: try_attribute(node, "comment")?,
-            })))
-        } else {
-            Ok(T::try_parse(node)?.map(DefinitionOrAlias::Definition))
-        }
     }
 }

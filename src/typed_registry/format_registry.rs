@@ -2,64 +2,81 @@ use std::{fmt, num::NonZeroU8, str::FromStr};
 
 use roxmltree::Node;
 
-use crate::{attribute, parse_children, try_attribute, Parse, ParseResult};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-
+#[xml(tag = "format")]
 pub struct Format<'a> {
     /// format name
+    #[xml(attribute())]
     pub name: &'a str,
     /// format class. A string whose value is shared by a group of formats which may be compatible, and is a textual description of something important that group has in common
+    #[xml(attribute())]
     pub class: &'a str,
     /// texel block size, in bytes, of the format
+    #[xml(attribute(rename = "blockSize"))]
     pub block_size: NonZeroU8,
     /// number of texels in a texel block of the format
+    #[xml(attribute(rename = "texelsPerBlock"))]
     pub texels_per_block: NonZeroU8,
     /// Three-dimensional extent of a texel block
+    #[xml(attribute(rename = "blockExtent"))]
     pub block_extent: Option<BlockExtent>,
     /// number of bits into which the format is packed
+    #[xml(attribute())]
     pub packed: Option<NonZeroU8>,
     /// general texture compression scheme
+    #[xml(attribute())]
     pub compressed: Option<&'a str>,
     /// The format's {YCbCr} encoding. Marks if {YCbCr} samplers are required by default when using this format
+    #[xml(attribute())]
     pub chroma: Option<FormatChroma>,
+    #[xml(child)]
     pub children: Vec<FormatChild<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 
 pub enum FormatChild<'a> {
+    #[xml(tag = "component")]
     Component {
         /// name of this component
+        #[xml(attribute())]
         name: ComponentName,
         /// number of bits in this component if it's not compressed
+        #[xml(attribute())]
         bits: ComponentBits,
         /// scalar data type of the component
+        #[xml(attribute(rename = "numericFormat"))]
         numeric_format: ComponentNumericFormat,
         /// which plane this component lies in
+        #[xml(attribute(rename = "planeIndex"))]
         plane_index: Option<u8>,
     },
-
+    #[xml(tag = "plane")]
     Plane {
         /// image plane being defined. Image planes are in the range [0,p-1] where p is the number of planes in the format.
+        #[xml(attribute())]
         index: u8,
         /// relative width of this plane. A value of k means that this plane is 1/k the width of the overall format.
+        #[xml(attribute(rename = "widthDivisor"))]
         width_divisor: NonZeroU8,
         /// relative height of this plane. A value of k means that this plane is 1/k the height of the overall format.
+        #[xml(attribute(rename = "heightDivisor"))]
         height_divisor: NonZeroU8,
         /// single-plane format that this plane is compatible with
+        #[xml(attribute())]
         compatible: &'a str,
     },
-
+    #[xml(tag = "spirvimageformat")]
     SpirvImageFormat {
         /// name of the SPIR-V image format
+        #[xml(attribute())]
         name: &'a str,
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct BlockExtent(pub NonZeroU8, pub NonZeroU8, pub NonZeroU8);
 
@@ -83,7 +100,17 @@ impl fmt::Display for BlockExtent {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum FormatChroma {
@@ -95,7 +122,7 @@ pub enum FormatChroma {
     Type444,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComponentBits {
@@ -124,7 +151,17 @@ impl fmt::Display for ComponentBits {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComponentNumericFormat {
@@ -148,7 +185,17 @@ pub enum ComponentNumericFormat {
     SFLOAT,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::EnumString, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    strum::EnumString,
+    strum::Display,
+    TryFromEscapedStr,
+    DisplayEscaped,
+)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 
 pub enum ComponentName {
@@ -164,47 +211,4 @@ pub enum ComponentName {
     Stencil,
     #[strum(serialize = "D")]
     Depth,
-}
-
-impl<'a> Parse<'a> for Format<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        if node.has_tag_name("format") {
-            Ok(Some(Format {
-                name: attribute(node, "name")?,
-                class: attribute(node, "class")?,
-                block_size: attribute(node, "blockSize")?,
-                texels_per_block: attribute(node, "texelsPerBlock")?,
-                block_extent: try_attribute(node, "blockExtent")?,
-                packed: try_attribute(node, "packed")?,
-                compressed: try_attribute(node, "compressed")?,
-                chroma: try_attribute::<_, false>(node, "chroma")?,
-                children: parse_children(node)?,
-            }))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl<'a> Parse<'a> for FormatChild<'a> {
-    fn try_parse<'input: 'a>(node: Node<'a, 'input>) -> ParseResult<Option<Self>> {
-        match node.tag_name().name() {
-            "component" => Ok(Some(FormatChild::Component {
-                name: attribute::<_, false>(node, "name")?,
-                bits: attribute(node, "bits")?,
-                numeric_format: attribute::<_, false>(node, "numericFormat")?,
-                plane_index: try_attribute(node, "planeIndex")?,
-            })),
-            "plane" => Ok(Some(FormatChild::Plane {
-                index: attribute(node, "index")?,
-                width_divisor: attribute(node, "widthDivisor")?,
-                height_divisor: attribute(node, "heightDivisor")?,
-                compatible: attribute(node, "compatible")?,
-            })),
-            "spirvimageformat" => Ok(Some(FormatChild::SpirvImageFormat {
-                name: attribute(node, "name")?,
-            })),
-            _ => Ok(None),
-        }
-    }
 }
