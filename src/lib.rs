@@ -13,12 +13,16 @@ extern crate serde_with;
 extern crate vulkan_parse_derive_helper;
 
 pub mod codegen;
+mod escape_utils;
+mod into_xml;
 mod lexer;
 mod parse_xml;
 mod parser;
 mod typed_registry;
 
 pub use crate::{
+    escape_utils::*,
+    into_xml::*,
     lexer::{tokenize, Constant, Error as LexerError, Token, TokenExtras},
     parse_xml::*,
     parser::*,
@@ -62,7 +66,7 @@ impl<T: enumflags2::BitFlag> Iterable for enumflags2::BitFlags<T> {
 }
 
 #[cfg(feature = "roundtrip")]
-pub mod into_xml {
+pub mod roundtrip {
     use std::io::{Error as IoError, Write};
 
     use crate::{Escaped, IntoXML, XMLWriter};

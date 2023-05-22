@@ -286,7 +286,7 @@ fn named_field_serialization_impl(
     } else {
         Ok(quote! {
             element #set_static_attr #( . #attr_fields ? )* .write_inner_content(move |writer| {
-                use crate::parse_xml::IntoXMLChildren;
+                use crate::into_xml::IntoXMLChildren;
                 #(#child_idents.write_children(writer)?;)*
                 Ok(())
             })

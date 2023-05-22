@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fs, io::Cursor};
 
 use roxmltree::Node;
-use vulkan_parse::{into_xml::into_xml, parse_registry, tokenize, Document, Expression};
+use vulkan_parse::{parse_registry, roundtrip::into_xml, tokenize, Document, Expression};
 
 #[test]
 fn test_vk_xml_conformance() {
