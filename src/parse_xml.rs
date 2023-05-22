@@ -6,37 +6,91 @@ use std::{
 };
 
 pub use roxmltree::Document;
-use roxmltree::{Node, NodeId};
+use roxmltree::{Node, NodeId, TextPos};
 
 use crate::{LexerError, ParseError, Registry, Seperator, TryFromEscapedStr, UnescapedStr};
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    NoMatch(NodeId),
+    NoMatch,
     /// Empty elements are disallowed in vulkan's mixed pseudo-c/xml
-    EmptyElement(NodeId),
-    MissingAttribute(&'static str, NodeId),
-    MissingAttributes(&'static [&'static str], NodeId),
-    UnknownAttribute(String, NodeId),
-    MissingChildElement(&'static str, NodeId),
-    LexerError(LexerError, NodeId),
-    PegParsingError(ParseError, NodeId),
-    AttributeValueError(&'static str, Box<dyn StdError + 'static>, NodeId),
-    TextValueError(Box<dyn StdError + 'static>, NodeId),
-}
-
-#[derive(Debug)]
-pub struct Error<'d, 'input> {
-    kind: ErrorKind,
-    document: &'d Document<'input>,
+    EmptyElement,
+    MissingAttribute(&'static str),
+    MissingAttributes(&'static [&'static str]),
+    UnknownAttribute(String),
+    MissingChildElement(&'static str),
+    LexerError(LexerError),
+    PegParsingError(ParseError),
+    AttributeValueError(&'static str, Box<dyn StdError + 'static>),
+    TextValueError(Box<dyn StdError + 'static>),
 }
 
 #[derive(Debug, Clone, Copy)]
-struct DocumentLocation<'a, 'input>(&'a Document<'input>, NodeId);
+pub struct Location {
+    node: NodeId,
+    start: usize,
+    end: Option<usize>,
+}
 
-impl<'a, 'input> fmt::Display for DocumentLocation<'a, 'input> {
+impl From<&'_ Node<'_, '_>> for Location {
+    fn from(value: &Node) -> Self {
+        let core::ops::Range { start, end } = value.range();
+        Self {
+            node: value.id(),
+            start,
+            end: Some(end),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    kind: ErrorKind,
+    location: Location,
+}
+
+impl Error {
+    pub fn new(kind: ErrorKind, node: &Node) -> Self {
+        Self {
+            kind,
+            location: node.into(),
+        }
+    }
+}
+
+impl ErrorKind {
+    pub fn with_location<I: Into<Location>>(self, location: I) -> Error {
+        Error {
+            kind: self,
+            location: location.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DocumentError<'d, 'input> {
+    error: Error,
+    document: &'d Document<'input>,
+}
+
+impl<'d, 'input> DocumentError<'d, 'input> {
+    pub fn span(&self) -> (TextPos, Option<TextPos>) {
+        (
+            self.document.text_pos_at(self.error.location.start),
+            self.error
+                .location
+                .end
+                .map(|b| self.document.text_pos_at(b)),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DisplayDocumentLocation<'a, 'input>(&'a Document<'input>, Location);
+
+impl<'a, 'input> fmt::Display for DisplayDocumentLocation<'a, 'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self(document, location) = *self;
+        let Self(document, Location { node: location, .. }) = *self;
         let node = document.get_node(location).unwrap();
         let ancestors = node.ancestors().collect::<Vec<_>>();
         for n in ancestors.into_iter().rev() {
@@ -67,100 +121,131 @@ impl<'a, 'input> fmt::Display for DocumentLocation<'a, 'input> {
     }
 }
 
-impl<'d, 'input> fmt::Display for Error<'d, 'input> {
+impl<'d, 'input> fmt::Display for DocumentError<'d, 'input> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.kind {
-            ErrorKind::NoMatch(id) => write!(
+        let Error { kind, location } = &self.error;
+        match &kind {
+            ErrorKind::NoMatch => write!(
                 f,
                 "No Match found at {}",
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::EmptyElement(id) => write!(
+            ErrorKind::EmptyElement => write!(
                 f,
                 "Empty elements are disallowed in vulkan's mixed pseudo-c/xml, at {}",
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::MissingAttribute(key, id) => write!(
+            ErrorKind::MissingAttribute(key) => write!(
                 f,
                 "Attribute {:?} not found in {}",
                 key,
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::MissingAttributes(key, id) => write!(
+            ErrorKind::MissingAttributes(key) => write!(
                 f,
                 "Attribute(s) {:?} not found in {}",
                 key,
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::UnknownAttribute(key, id) => write!(
+            ErrorKind::UnknownAttribute(key) => write!(
                 f,
                 "Attribute {:?} was not expected in {}",
                 key,
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::MissingChildElement(tag, id) => write!(
+            ErrorKind::MissingChildElement(tag) => write!(
                 f,
                 "No child with the tag-name {:?} was found at {}",
                 tag,
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::LexerError(e, id) => {
-                let unk =
-                    &self.document.get_node(*id).unwrap().text().unwrap()[e.span.start..e.span.end];
+            ErrorKind::LexerError(e) => {
+                let unk = &self
+                    .document
+                    .get_node(location.node)
+                    .unwrap()
+                    .text()
+                    .unwrap()[e.span.start..e.span.end];
                 writeln!(
                     f,
                     "Lexer encountered an unexpected token {:?} at {:?} in {}",
                     unk,
                     e.span,
-                    DocumentLocation(self.document, *id),
+                    DisplayDocumentLocation(self.document, *location),
                 )
             }
-            ErrorKind::PegParsingError(e, id) => write!(
+            ErrorKind::PegParsingError(e) => write!(
                 f,
                 "Mixed Parsing Error at {}\n{}",
-                DocumentLocation(self.document, *id),
+                DisplayDocumentLocation(self.document, *location),
                 e
             ),
-            ErrorKind::AttributeValueError(key, _, id) => write!(
+            ErrorKind::AttributeValueError(key, _) => write!(
                 f,
                 "Error encountered when parsing Attribute {:?} with value of {:?} in {}",
                 key,
                 self.document
-                    .get_node(*id)
+                    .get_node(location.node)
                     .unwrap()
                     .attribute(*key)
                     .unwrap(),
-                DocumentLocation(self.document, *id)
+                DisplayDocumentLocation(self.document, *location)
             ),
-            ErrorKind::TextValueError(_, id) => write!(
+            ErrorKind::TextValueError(_) => write!(
                 f,
                 "Error encountered when parsing the text {:?} of {}",
-                self.document.get_node(*id).unwrap().text().unwrap(),
-                DocumentLocation(self.document, *id)
+                self.document
+                    .get_node(location.node)
+                    .unwrap()
+                    .text()
+                    .unwrap(),
+                DisplayDocumentLocation(self.document, *location)
             ),
         }
     }
 }
 
-impl<'d, 'input> StdError for Error<'d, 'input> {
+impl<'d, 'input> StdError for DocumentError<'d, 'input> {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match &self.kind {
-            ErrorKind::LexerError(e, _) => Some(e),
-            ErrorKind::PegParsingError(e, _) => Some(e),
-            ErrorKind::AttributeValueError(_, e, _) => Some(&**e),
-            ErrorKind::TextValueError(e, _) => Some(&**e),
+        match &self.error.kind {
+            ErrorKind::LexerError(e) => Some(e),
+            ErrorKind::PegParsingError(e) => Some(e),
+            ErrorKind::AttributeValueError(_, e) => Some(&**e),
+            ErrorKind::TextValueError(e) => Some(&**e),
             _ => None,
         }
     }
 }
 
-pub(crate) type ParseResult<T> = std::result::Result<T, ErrorKind>;
+pub(crate) type ParseResult<T> = std::result::Result<T, Error>;
+
+pub struct Attribute<'a, 'input> {
+    inner: roxmltree::Attribute<'a, 'input>,
+    node_id: NodeId,
+}
+
+impl<'a, 'input> Deref for Attribute<'a, 'input> {
+    type Target = roxmltree::Attribute<'a, 'input>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl From<&'_ Attribute<'_, '_>> for Location {
+    fn from(value: &Attribute) -> Self {
+        Self {
+            node: value.node_id,
+            start: value.inner.position(),
+            end: None,
+        }
+    }
+}
 
 pub trait FromAttrValue<'xml>: Sized {
     fn from_attr_value<'input: 'xml>(
-        value: roxmltree::Attribute<'xml, 'input>,
+        value: Attribute<'xml, 'input>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
     ) -> ParseResult<Self>;
 }
 
@@ -169,21 +254,19 @@ where
     <Self as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
 {
     fn from_attr_value<'input: 'xml>(
-        value: roxmltree::Attribute<'xml, 'input>,
+        value: Attribute<'xml, 'input>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
     ) -> ParseResult<Self> {
         TryFromEscapedStr::try_from_escaped_str(value.value())
-            .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node_id))
+            .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e)).with_location(&value))
     }
 }
 
 // FIXME Remove once we switch from `roxmltree`
 impl<'xml> FromAttrValue<'xml> for UnescapedStr<'xml> {
     fn from_attr_value<'input: 'xml>(
-        value: roxmltree::Attribute<'xml, 'input>,
+        value: Attribute<'xml, 'input>,
         _attr: &'static str,
-        _node_id: roxmltree::NodeId,
     ) -> ParseResult<Self> {
         Ok(Self::from(value.value_storage()))
     }
@@ -193,9 +276,8 @@ pub trait FromInterspersedAttrValue<'xml>: FromIterator<Self::Item> {
     type Item: TryFromEscapedStr<'xml>;
 
     fn from_interspersed_attr_value<'input: 'xml, S: Seperator>(
-        value: roxmltree::Attribute<'xml, 'input>,
+        value: Attribute<'xml, 'input>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
     ) -> ParseResult<Self>
     where
         <Self::Item as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
@@ -205,7 +287,7 @@ pub trait FromInterspersedAttrValue<'xml>: FromIterator<Self::Item> {
             .split(S::SEP)
             .map(TryFromEscapedStr::try_from_escaped_str)
             .collect::<Result<_, _>>()
-            .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node_id))
+            .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e)).with_location(&value))
     }
 }
 impl<'xml, T: TryFromEscapedStr<'xml>> FromInterspersedAttrValue<'xml> for Vec<T> {
@@ -219,9 +301,9 @@ impl<'xml, T: enumflags2::BitFlag + TryFromEscapedStr<'xml>> FromInterspersedAtt
 
 pub trait TryFromAttrValue<'xml>: Sized {
     fn try_from_attr_value<'input: 'xml>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self>;
 }
 
@@ -230,14 +312,13 @@ impl<'xml, T: FromAttrValue<'xml>> TryFromAttrValue<'xml> for T
 //     <T as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
 {
     fn try_from_attr_value<'input: 'xml>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self> {
         FromAttrValue::from_attr_value(
-            value.ok_or_else(|| ErrorKind::MissingAttribute(attr, node_id))?,
+            value.ok_or_else(|| ErrorKind::MissingAttribute(attr).with_location(node_loc))?,
             attr,
-            node_id,
         )
     }
 }
@@ -247,21 +328,21 @@ impl<'xml, T: FromAttrValue<'xml>> TryFromAttrValue<'xml> for Option<T>
 //     <T as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
 {
     fn try_from_attr_value<'input: 'xml>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self> {
         value
-            .map(|value| FromAttrValue::from_attr_value(value, attr, node_id))
+            .map(|value| FromAttrValue::from_attr_value(value, attr))
             .transpose()
     }
 }
 
 pub trait TryFromInterspersedAttrValue<'xml>: Sized {
     fn try_from_interspersed_attr_value<'input: 'xml, S: Seperator>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self>;
 }
 
@@ -270,14 +351,13 @@ where
     <T as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
 {
     fn try_from_interspersed_attr_value<'input: 'xml, S: Seperator>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self> {
         Self::from_interspersed_attr_value::<S>(
-            value.ok_or_else(|| ErrorKind::MissingAttribute(attr, node_id))?,
+            value.ok_or_else(|| ErrorKind::MissingAttribute(attr).with_location(node_loc))?,
             attr,
-            node_id,
         )
     }
 }
@@ -287,14 +367,13 @@ where
     <T as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
 {
     fn try_from_interspersed_attr_value<'input: 'xml, S: Seperator>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self> {
         Self::from_interspersed_attr_value::<S>(
-            value.ok_or_else(|| ErrorKind::MissingAttribute(attr, node_id))?,
+            value.ok_or_else(|| ErrorKind::MissingAttribute(attr).with_location(node_loc))?,
             attr,
-            node_id,
         )
     }
 }
@@ -303,12 +382,12 @@ where
     <V::Item as TryFromEscapedStr<'xml>>::Error: 'static + StdError,
 {
     fn try_from_interspersed_attr_value<'input: 'xml, S: Seperator>(
-        value: Option<roxmltree::Attribute<'xml, 'input>>,
+        value: Option<Attribute<'xml, 'input>>,
         attr: &'static str,
-        node_id: roxmltree::NodeId,
+        node_loc: Location,
     ) -> ParseResult<Self> {
         value
-            .map(|value| V::from_interspersed_attr_value::<S>(value, attr, node_id))
+            .map(|value| V::from_interspersed_attr_value::<S>(value, attr))
             .transpose()
     }
 }
@@ -318,7 +397,7 @@ pub trait TryFromXML<'xml>: Sized {
     fn from_xml<'input: 'xml>(node: Node<'xml, 'input>) -> ParseResult<Self> {
         match Self::try_from_xml(node) {
             Ok(Some(v)) => Ok(v),
-            Ok(None) => Err(ErrorKind::NoMatch(node.id())),
+            Ok(None) => Err(ErrorKind::NoMatch.with_location(&node)),
             Err(e) => Err(e),
         }
     }
@@ -338,7 +417,7 @@ impl<'xml, T: FromAttributes<'xml>> TryFromAttributes<'xml> for T {
     fn try_from_attributes<'input: 'xml>(node: Node<'xml, 'input>) -> ParseResult<Self> {
         match T::from_attributes(node) {
             Ok(Ok(v)) => Ok(v),
-            Ok(Err(attrs)) => Err(ErrorKind::MissingAttributes(attrs, node.id())),
+            Ok(Err(attrs)) => Err(ErrorKind::MissingAttributes(attrs).with_location(&node)),
             Err(e) => Err(e),
         }
     }
@@ -361,9 +440,10 @@ where
     fn try_from_text<'input: 'xml>(node: Node<'xml, 'input>) -> ParseResult<Self> {
         let text = node
             .text()
-            .ok_or(crate::ErrorKind::EmptyElement(node.id()))?;
+            .ok_or(crate::ErrorKind::EmptyElement)
+            .map_err(|kind| Error::new(kind, &node))?;
         T::try_from_escaped_str(text)
-            .map_err(|e| crate::ErrorKind::TextValueError(Box::new(e), node.id()))
+            .map_err(|e| Error::new(ErrorKind::TextValueError(Box::new(e)), &node))
     }
 }
 
@@ -375,7 +455,7 @@ where
         node.text()
             .map(T::try_from_escaped_str)
             .transpose()
-            .map_err(|e| ErrorKind::TextValueError(Box::new(e), node.id()))
+            .map_err(|e| Error::new(ErrorKind::TextValueError(Box::new(e)), &node))
     }
 }
 
@@ -383,39 +463,50 @@ impl<'s, 'xml: 's> TryFromTextContent<'xml> for UnescapedStr<'s> {
     fn try_from_text<'input: 'xml>(node: Node<'xml, 'input>) -> ParseResult<Self> {
         node.text_storage()
             .map(UnescapedStr::from)
-            .ok_or(crate::ErrorKind::EmptyElement(node.id()))
+            .ok_or(crate::ErrorKind::EmptyElement)
+            .map_err(|kind| Error::new(kind, &node))
     }
 }
 
 // Generic attribute getter with conv
-pub(crate) fn try_attribute<'a, 'input, T: TryFromEscapedStr<'a>>(
+pub(crate) fn try_from_attribute<'a, 'input, T: TryFromAttrValue<'a>>(
     node: Node<'a, 'input>,
     attr: &'static str,
-) -> ParseResult<Option<T>>
-where
-    T::Error: 'static + StdError,
-{
-    node.attribute(attr)
-        .map(TryFromEscapedStr::try_from_escaped_str)
-        .transpose()
-        .map_err(|e| ErrorKind::AttributeValueError(attr, Box::new(e), node.id()))
+) -> ParseResult<T> {
+    T::try_from_attr_value(
+        node.attribute_node(attr).map(|inner| Attribute {
+            inner,
+            node_id: node.id(),
+        }),
+        attr,
+        (&node).into(),
+    )
 }
 
-pub(crate) fn attribute<'a, 'input, T: TryFromEscapedStr<'a>>(
+pub(crate) fn try_from_interspersed_attr<
+    'a,
+    'input,
+    S: Seperator,
+    T: TryFromInterspersedAttrValue<'a>,
+>(
     node: Node<'a, 'input>,
     attr: &'static str,
-) -> ParseResult<T>
-where
-    T::Error: 'static + StdError,
-{
-    try_attribute(node, attr)?.ok_or_else(|| ErrorKind::MissingAttribute(attr, node.id()))
+) -> ParseResult<T> {
+    T::try_from_interspersed_attr_value::<S>(
+        node.attribute_node(attr).map(|inner| Attribute {
+            inner,
+            node_id: node.id(),
+        }),
+        attr,
+        (&node).into(),
+    )
 }
 
 pub fn parse_registry<'a, 'input: 'a>(
     document: &'a Document<'input>,
-) -> Result<Registry<'a>, Error<'a, 'input>> {
+) -> Result<Registry<'a>, DocumentError<'a, 'input>> {
     let root = document.root_element();
-    Registry::from_xml(root).map_err(|kind| Error { kind, document })
+    Registry::from_xml(root).map_err(|error| DocumentError { error, document })
 }
 
 fn node_is_element(node: &Node) -> bool {
@@ -429,7 +520,7 @@ type PeekableChildrenElementsIter<'a, 'input> =
 #[derive(Debug, Clone)]
 pub struct PeekableChildrenElements<'a, 'input> {
     iter: PeekableChildrenElementsIter<'a, 'input>,
-    pub parent_id: NodeId,
+    pub parent_loc: Location,
 }
 
 impl<'a, 'input: 'a> From<Node<'a, 'input>> for PeekableChildrenElements<'a, 'input> {
@@ -437,7 +528,7 @@ impl<'a, 'input: 'a> From<Node<'a, 'input>> for PeekableChildrenElements<'a, 'in
         let filter_children: Filter<_, NodeFilterFn> = value.children().filter(node_is_element);
         Self {
             iter: filter_children.peekable(),
-            parent_id: value.id(),
+            parent_loc: Location::from(&value),
         }
     }
 }
@@ -456,11 +547,39 @@ impl<'a, 'input: 'a> DerefMut for PeekableChildrenElements<'a, 'input> {
     }
 }
 
-trait PeekableExt<I: Iterator> {
-    fn next_if_some<R>(&mut self, func: impl FnOnce(&I::Item) -> Option<R>) -> Option<R>;
+trait PeekableExt: Iterator {
+    fn next_if_some<R>(&mut self, func: impl FnOnce(&Self::Item) -> Option<R>) -> Option<R>;
+    fn take_while_some<R, F: FnMut(&Self::Item) -> Option<R>>(
+        &mut self,
+        func: F,
+    ) -> PeekingTakeWhileSome<&mut Self, F> {
+        PeekingTakeWhileSome { iter: self, func }
+    }
 }
 
-impl<I: Iterator> PeekableExt<I> for Peekable<I> {
+impl<P: PeekableExt> PeekableExt for &mut P {
+    fn next_if_some<R>(&mut self, func: impl FnOnce(&Self::Item) -> Option<R>) -> Option<R> {
+        (*self).next_if_some(func)
+    }
+}
+
+struct PeekingTakeWhileSome<I, F> {
+    iter: I,
+    func: F,
+}
+impl<I: PeekableExt, R, F: FnMut(&I::Item) -> Option<R>> Iterator for PeekingTakeWhileSome<I, F> {
+    type Item = R;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next_if_some(&mut self.func)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, self.iter.size_hint().1)
+    }
+}
+
+impl<I: Iterator> PeekableExt for Peekable<I> {
     fn next_if_some<R>(
         &mut self,
         func: impl FnOnce(&<I as Iterator>::Item) -> Option<R>,
@@ -474,64 +593,56 @@ impl<I: Iterator> PeekableExt<I> for Peekable<I> {
     }
 }
 
-pub trait ParseChildren<'node>: Sized {
-    fn from_children<'input: 'node>(
-        it: &mut PeekableChildrenElements<'node, 'input>,
-    ) -> ParseResult<Self>;
+pub trait FromXMLChildren<'xml>: Sized {
+    fn from_children<'input: 'xml>(
+        it: &mut PeekableChildrenElements<'xml, 'input>,
+    ) -> ParseResult<Option<Self>>;
 }
 
-pub(crate) fn parse_children<'node, 'input: 'node, T: ParseChildren<'node>>(
-    node: Node<'node, 'input>,
-) -> ParseResult<T> {
-    let mut it = node.into();
-    let res = T::from_children(&mut it)?;
-    if let Some(n) = it.next() {
-        Err(ErrorKind::NoMatch(n.id()))
-    } else {
-        Ok(res)
-    }
-}
-
-// FIXME
-impl<'node, T: crate::TryFromXML<'node> + crate::into_xml::IntoXMLElement> ParseChildren<'node>
-    for T
-{
-    fn from_children<'input: 'node>(
-        it: &mut PeekableChildrenElements<'node, 'input>,
-    ) -> ParseResult<Self> {
-        it.next().map_or(
-            Err(ErrorKind::MissingChildElement(T::TAG, it.parent_id)),
-            T::from_xml,
-        )
-    }
-}
-
-impl<'node, T: crate::TryFromXML<'node>> ParseChildren<'node> for Option<T> {
-    fn from_children<'input: 'node>(
-        it: &mut PeekableChildrenElements<'node, 'input>,
-    ) -> ParseResult<Self> {
-        it.next_if_some(|item| T::try_from_xml(*item).transpose())
+impl<'xml, T: TryFromXML<'xml>> FromXMLChildren<'xml> for T {
+    fn from_children<'input: 'xml>(
+        it: &mut PeekableChildrenElements<'xml, 'input>,
+    ) -> ParseResult<Option<Self>> {
+        it.next_if_some(|node| T::try_from_xml(*node).transpose())
             .transpose()
     }
 }
 
-impl<'node, T: crate::TryFromXML<'node>> ParseChildren<'node> for Vec<T> {
-    fn from_children<'input: 'node>(
-        it: &mut PeekableChildrenElements<'node, 'input>,
+pub trait TryFromXMLChildren<'xml>: Sized {
+    fn try_from_children<'input: 'xml>(
+        it: &mut PeekableChildrenElements<'xml, 'input>,
+    ) -> ParseResult<Self>;
+}
+
+impl<'xml, T: crate::Tagged + FromXMLChildren<'xml>> TryFromXMLChildren<'xml> for T {
+    fn try_from_children<'input: 'xml>(
+        it: &mut PeekableChildrenElements<'xml, 'input>,
     ) -> ParseResult<Self> {
-        let mut out = Vec::new();
-        while let Some(v) = it.next_if_some(|item| T::try_from_xml(*item).transpose()) {
-            out.push(v?);
-        }
-        Ok(out)
+        Self::from_children(it)?
+            .ok_or_else(|| ErrorKind::MissingChildElement(T::TAG).with_location(it.parent_loc))
     }
 }
 
-#[impl_trait_for_tuples::impl_for_tuples(4)]
-impl<'node> ParseChildren<'node> for Tuple {
-    fn from_children<'input: 'node>(
-        it: &mut PeekableChildrenElements<'node, 'input>,
+impl<'xml, T: FromXMLChildren<'xml>> TryFromXMLChildren<'xml> for Option<T> {
+    fn try_from_children<'input: 'xml>(
+        it: &mut PeekableChildrenElements<'xml, 'input>,
     ) -> ParseResult<Self> {
-        Ok(for_tuples!( (#( Tuple::from_children(it)? ),* )))
+        T::from_children(it)
     }
 }
+
+impl<'xml, T: TryFromXML<'xml>> TryFromXMLChildren<'xml> for Vec<T> {
+    fn try_from_children<'input: 'xml>(
+        it: &mut PeekableChildrenElements<'xml, 'input>,
+    ) -> ParseResult<Self> {
+        it.take_while_some(|item| T::try_from_xml(*item).transpose())
+            .collect()
+    }
+}
+
+// // How does the conflict with the `FromXMLChildren` impl
+// impl<'xml, C: IntoIterator + FromIterator<<C as IntoIterator>::Item>> TryFromXMLChildren<'xml> for C where C::Item: TryFromXML<'xml> {
+//     fn try_from_children<'input: 'xml>(it: &mut PeekableChildrenElements<'xml, 'input>) -> ParseResult<Self> {
+//         it.take_while_some(|item| C::Item::try_from_xml(*item).transpose()).collect()
+//     }
+// }

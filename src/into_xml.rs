@@ -124,20 +124,6 @@ impl<T: IntoXML> IntoXMLChildren for [T] {
     }
 }
 
-impl<T: IntoXML> IntoXMLChildren for Vec<T> {
-    fn write_children<W: ?Sized + XMLWriter>(&self, writer: &mut W) -> Result<(), W::Error> {
-        self.iter().try_for_each(|v| v.write_xml(writer))
-    }
-}
-
-#[impl_trait_for_tuples::impl_for_tuples(4)]
-impl IntoXMLChildren for Tuple {
-    fn write_children<W: ?Sized + XMLWriter>(&self, writer: &mut W) -> Result<(), W::Error> {
-        for_tuples!( #( Tuple.write_children(writer)?; )* );
-        Ok(())
-    }
-}
-
 pub struct XMLElementBuilder<'t, 'w, W: 'w + ?Sized + XMLWriter> {
     tag_name: &'t str,
     writer: &'w mut W,
@@ -249,13 +235,11 @@ impl<'t, 'w, W: 'w + ?Sized + XMLWriter> XMLElementBuilder<'t, 'w, W> {
     }
 }
 
-pub(crate) trait IntoXML {
+pub trait IntoXML {
     fn write_xml<W: ?Sized + XMLWriter>(&self, writer: &mut W) -> Result<(), W::Error>;
 }
 
-pub(crate) trait IntoXMLElement {
-    const TAG: &'static str;
-
+pub trait IntoXMLElement {
     fn add_static_attrs<'w, W: ?Sized + XMLWriter>(
         element: XMLElementBuilder<'static, 'w, W>,
     ) -> Result<XMLElementBuilder<'static, 'w, W>, W::Error> {
@@ -275,7 +259,7 @@ pub(crate) trait IntoXMLElement {
     }
 }
 
-impl<T: IntoXMLElement> IntoXML for T {
+impl<T: IntoXMLElement + crate::Tagged> IntoXML for T {
     fn write_xml<W: ?Sized + XMLWriter>(&self, writer: &mut W) -> Result<(), W::Error> {
         self.write_element(Self::add_static_attrs(XMLElementBuilder::new(
             writer,

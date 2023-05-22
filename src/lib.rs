@@ -29,6 +29,10 @@ pub use crate::{
     typed_registry::*,
 };
 
+pub trait Tagged {
+    const TAG: &'static str;
+}
+
 pub trait Iterable {
     type IT<'i>: IntoIterator
     where

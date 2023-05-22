@@ -466,7 +466,7 @@ fn vk_token_flat_map<'a, 'input: 'a>(
         let text = n.text().unwrap_or("");
         Either::Right(tokenize(text, parsing_macros, objc_compat).map(move |r| {
             r.map(VkXMLToken::C)
-                .map_err(|e| ErrorKind::LexerError(e, n.id()))
+                .map_err(|e| ErrorKind::LexerError(e).with_location(&n))
         }))
     }
 }
@@ -495,18 +495,19 @@ pub trait TryFromTokens<'a>: Sized {
     fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError>;
     fn try_from_elements<'input: 'a, I: IntoIterator<Item = roxmltree::Node<'a, 'input>>>(
         elements: I,
-        parent_id: roxmltree::NodeId,
+        parent_loc: crate::Location,
     ) -> ParseResult<Self> {
         let tokens = elements
             .into_iter()
             .flat_map(|n| vk_token_flat_map(n, Self::PARSING_MACROS, Self::OBJC_COMPAT))
             .collect::<ParseResult<_>>()?;
-        Self::try_from_tokens(&tokens).map_err(|e| crate::ErrorKind::PegParsingError(e, parent_id))
+        Self::try_from_tokens(&tokens)
+            .map_err(|e| crate::ErrorKind::PegParsingError(e).with_location(parent_loc))
     }
     fn try_from_node<'input: 'a>(node: roxmltree::Node<'a, 'input>) -> ParseResult<Self> {
         Self::try_from_elements(
             node.children().filter(|n| n.is_element() || n.is_text()),
-            node.id(),
+            (&node).into(),
         )
     }
 }

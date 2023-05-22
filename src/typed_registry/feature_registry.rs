@@ -3,7 +3,7 @@ use core::fmt;
 use roxmltree::Node;
 
 use super::common::{AliasDeprecationKind, CommentendChildren, SemVarVersion};
-use crate::{try_attribute, Expression, ParseResult, StdVersion, XMLElementBuilder};
+use crate::{Expression, ParseResult, StdVersion, XMLElementBuilder};
 
 #[enumflags2::bitflags]
 #[repr(u8)]
@@ -199,18 +199,18 @@ impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for RequireValueEnum<'a> {
     fn from_attributes<'input: 'xml>(
         node: Node<'xml, 'input>,
     ) -> ParseResult<Result<Self, &'static [&'static str]>> {
-        if let Some(value) = try_attribute(node, "value")? {
+        if let Some(value) = crate::try_from_attribute(node, "value")? {
             Ok(Ok(RequireValueEnum::Value(value)))
-        } else if let Some(alias) = try_attribute(node, "alias")? {
+        } else if let Some(alias) = crate::try_from_attribute(node, "alias")? {
             Ok(Ok(RequireValueEnum::Alias(alias)))
-        } else if let Some(offset) = try_attribute(node, "offset")? {
+        } else if let Some(offset) = crate::try_from_attribute(node, "offset")? {
             Ok(Ok(RequireValueEnum::Offset {
                 // extnumber: attribute(node, "extnumber")?,
-                extnumber: try_attribute(node, "extnumber")?,
+                extnumber: crate::try_from_attribute(node, "extnumber")?,
                 offset,
-                direction: try_attribute(node, "dir")?,
+                direction: crate::try_from_attribute(node, "dir")?,
             }))
-        } else if let Some(bitpos) = try_attribute(node, "bitpos")? {
+        } else if let Some(bitpos) = crate::try_from_attribute(node, "bitpos")? {
             Ok(Ok(RequireValueEnum::Bitpos(bitpos)))
         } else {
             Ok(Err(&["value", "alias", "offset", "bitpos"]))

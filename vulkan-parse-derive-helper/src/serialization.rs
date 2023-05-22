@@ -6,6 +6,21 @@ use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use syn::{DeriveInput, Ident, Path, PathSegment};
 
+#[derive(Debug)]
+struct TagAttr(syn::Expr);
+
+impl FromMeta for TagAttr {
+    fn from_expr(expr: &syn::Expr) -> darling::Result<Self> {
+        Ok(Self(expr.clone()))
+    }
+}
+
+impl ToTokens for TagAttr {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.0.to_tokens(tokens)
+    }
+}
+
 #[derive(Debug, Default, FromMeta)]
 struct XMLSerializationDeriveXAttribute {
     #[darling(default)]
@@ -103,7 +118,7 @@ impl<'s> TryFrom<&'s [SpannedValue<XMLSerializationDeriveField>]> for SplitField
 }
 
 fn named_field_deserialization_guard(
-    tag: Option<&str>,
+    tag: Option<&TagAttr>,
     discriminant: Option<&VariantDiscriminantOpts>,
 ) -> Option<TokenStream> {
     match (tag, discriminant) {
@@ -159,20 +174,21 @@ fn named_field_deserialization_impl(
         )| {
             let name = name.unwrap();
             if flattened.is_present() {
-                return quote! { #name : crate::TryFromAttributes::try_from_attributes(node)? }
+                return quote! { #name : crate::TryFromAttributes::try_from_attributes(node)? };
             }
-            let attr_str = rename.as_deref()
+            let attr_str = rename
+                .as_deref()
                 .map(ToTokens::to_token_stream)
                 .unwrap_or_else(|| quote! { stringify!(#name) });
             let v = if let Some(seperator) = seperator {
-                quote! { crate::TryFromInterspersedAttrValue::try_from_interspersed_attr_value::<#seperator>(node.attribute_node(#attr_str), #attr_str, node.id())? }
+                quote! { crate::try_from_interspersed_attr::<#seperator, _>(node, #attr_str)? }
             } else {
-                quote! { crate::TryFromAttrValue::try_from_attr_value(node.attribute_node(#attr_str), #attr_str, node.id())? }
+                quote! { crate::try_from_attribute(node, #attr_str)? }
             };
             if let Some(mapped) = mapped {
-                quote!{ #name : #mapped::into(#v) }
+                quote! { #name : #mapped::into(#v) }
             } else {
-                quote!{ #name : #v }
+                quote! { #name : #v }
             }
         },
     );
@@ -206,7 +222,11 @@ fn named_field_deserialization_impl(
     } else {
         assert!(text_field.is_none());
         Ok(quote! {
-            let ( #(#child_idents),* ) = crate::parse_children(node)?;
+            let mut it = node.into();
+            #(let #child_idents = crate::TryFromXMLChildren::try_from_children(&mut it)?;)*
+            if let Some(n) = it.next() {
+                return Err(crate::ErrorKind::NoMatch.with_location(&n))
+            }
             Ok(Some(#struct_path {
                 #(#attr_fields,)*
                 #flattened_field
@@ -324,7 +344,7 @@ struct XMLSerializationDeriveVariant {
     #[darling(default, rename = "discriminant")]
     discriminant_attr_val: Option<VariantDiscriminantOpts>,
     #[darling(default)]
-    tag: Option<String>,
+    tag: Option<TagAttr>,
 }
 
 impl XMLSerializationDeriveVariant {
@@ -346,7 +366,7 @@ impl XMLSerializationDeriveVariant {
 
         match (
             fields.style,
-            named_field_deserialization_guard(tag.as_deref(), discriminant_attr_val.as_ref()),
+            named_field_deserialization_guard(tag.as_ref(), discriminant_attr_val.as_ref()),
             fields.fields.as_slice(),
         ) {
             (darling::ast::Style::Tuple, Some(guard), [_]) => Ok(quote! {
@@ -491,7 +511,7 @@ pub struct XMLSerializationDeriveInput {
     >,
     // attributes
     #[darling(default)]
-    tag: Option<String>,
+    tag: Option<TagAttr>,
     #[darling(default)]
     tokenized: Flag,
     #[darling(default)]
@@ -506,7 +526,7 @@ fn enum_impl(
     de_where_clause: Option<&syn::WhereClause>,
     ser_where_clause: Option<&syn::WhereClause>,
     variants: &[SpannedValue<XMLSerializationDeriveVariant>],
-    tag: Option<&str>,
+    tag: Option<&TagAttr>,
     tokenized: bool,
 ) -> syn::Result<TokenStream> {
     if tokenized {
@@ -523,8 +543,6 @@ fn enum_impl(
                 }
 
                 impl #ser_impl_generics crate::IntoXMLElement for #enum_ident #ty_generics #ser_where_clause {
-                    const TAG: &'static str = #tag;
-
                     fn write_element<'w, W: ?Sized + crate::XMLWriter>(
                         &self,
                         element: crate::XMLElementBuilder<'static, 'w, W>,
@@ -567,8 +585,6 @@ fn enum_impl(
             }
 
             impl #ser_impl_generics crate::IntoXMLElement for #enum_ident #ty_generics #ser_where_clause {
-                const TAG: &'static str = #tag;
-
                 fn write_element<'w, W: ?Sized + crate::XMLWriter>(
                     &self,
                     element: crate::XMLElementBuilder<'static, 'w, W>,
@@ -611,7 +627,7 @@ fn struct_impl(
     de_where_clause: Option<&syn::WhereClause>,
     ser_where_clause: Option<&syn::WhereClause>,
     fields: &darling::ast::Fields<SpannedValue<XMLSerializationDeriveField>>,
-    tag: Option<&str>,
+    tag: Option<&TagAttr>,
     discriminant: Option<&VariantDiscriminantOpts>,
     tokenized: bool,
 ) -> syn::Result<TokenStream> {
@@ -638,7 +654,6 @@ fn struct_impl(
     } else {
         deser
     };
-    let tag = tag.unwrap_or_default();
     Ok(quote! {
         impl #de_impl_generics crate::TryFromXML<'de> for #struct_ident #ty_generics #de_where_clause {
             fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
@@ -647,8 +662,6 @@ fn struct_impl(
         }
 
         impl #ser_impl_generics crate::IntoXMLElement for #struct_ident #ty_generics #ser_where_clause {
-            const TAG: &'static str = #tag;
-
             fn write_element<'w, W: ?Sized + crate::XMLWriter>(&self, element: crate::XMLElementBuilder<'static, 'w, W>) -> Result<(), W::Error> {
                 let Self { #(#field_idents,)* .. } = self;
                 #ser
@@ -679,14 +692,18 @@ impl XMLSerializationDeriveInput {
         de_generics
             .type_params_mut()
             .for_each(|typ| typ.bounds.push(syn::parse_quote!(crate::TryFromXML<'de>)));
-        ser_generics
-            .type_params_mut()
-            .for_each(|typ| typ.bounds.push(syn::parse_quote!(crate::IntoXML)));
+        ser_generics.type_params_mut().for_each(|typ| {
+            typ.bounds.push(if self.tag.is_some() {
+                syn::parse_quote!(crate::IntoXMLElement)
+            } else {
+                syn::parse_quote!(crate::IntoXML)
+            })
+        });
 
         let (de_impl_generics, _, de_where_clause) = de_generics.split_for_impl();
         let (ser_impl_generics, _, ser_where_clause) = ser_generics.split_for_impl();
 
-        match &self.data {
+        let xml_impl = match &self.data {
             darling::ast::Data::Enum(variants) => enum_impl(
                 ident,
                 ty_generics,
@@ -695,7 +712,7 @@ impl XMLSerializationDeriveInput {
                 de_where_clause,
                 ser_where_clause,
                 &variants,
-                self.tag.as_deref(),
+                self.tag.as_ref(),
                 self.tokenized.is_present(),
             ),
             darling::ast::Data::Struct(fields) => struct_impl(
@@ -706,11 +723,22 @@ impl XMLSerializationDeriveInput {
                 de_where_clause,
                 ser_where_clause,
                 &fields,
-                self.tag.as_deref(),
+                self.tag.as_ref(),
                 self.discriminant.as_ref(),
                 self.tokenized.is_present(),
             ),
-        }
+        }?;
+        Ok(if let Some(tag) = self.tag.as_ref() {
+            let (impl_generics, ty_generics, where_clause) = self.generics.split_for_impl();
+            quote! {
+                impl #impl_generics crate::Tagged for #ident #ty_generics #where_clause {
+                    const TAG: &'static str = #tag;
+                }
+                #xml_impl
+            }
+        } else {
+            xml_impl
+        })
     }
 }
 

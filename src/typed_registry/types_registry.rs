@@ -11,8 +11,8 @@ use vulkan_parse_derive_helper::DisplayEscaped;
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    attribute, tokenize, try_attribute, DisplayEscaped, Expression, ParseResult, Token,
-    TryFromEscapedStr, TryFromTokens, TypeSpecifier, UnescapedStr, VulkanApi,
+    tokenize, DisplayEscaped, Expression, ParseResult, Token, TryFromEscapedStr, TryFromTokens,
+    TypeSpecifier, UnescapedStr, VulkanApi,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,17 +100,11 @@ impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for DynamicShapeKind<'a> {
     fn from_attributes<'input: 'xml>(
         node: Node<'xml, 'input>,
     ) -> ParseResult<Result<Self, &'static [&'static str]>> {
-        let len: Option<&str> = crate::TryFromAttrValue::try_from_attr_value(
-            node.attribute_node("len"),
-            "len",
-            node.id(),
-        )?;
-
-        if let Some(len) = len {
+        if let Some(len) = crate::try_from_attribute::<Option<&str>>(node, "len")? {
             Ok(Ok(
                 if let Some(latex_expr) = len.strip_prefix("latexmath:") {
                     // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
-                    let c_expr = attribute(node, "altlen")?;
+                    let c_expr = crate::try_from_attribute(node, "altlen")?;
                     DynamicShapeKind::Expression { latex_expr, c_expr }
                 } else if let Some((l1, l2)) = len.split_once(',') {
                     DynamicShapeKind::Double(l1.into(), l2.into())
@@ -446,6 +440,7 @@ pub enum Type<'a> {
 /// <type> without category attribute
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "type")]
 pub struct RequiresType<'a> {
     /// name of this type
     #[xml(attribute())]
@@ -462,6 +457,10 @@ pub struct IncludeType<'a> {
     pub name: &'a str,
     /// #include "{name}" is a local include
     pub is_local_include: Option<bool>,
+}
+
+impl<'a> crate::Tagged for IncludeType<'a> {
+    const TAG: &'static str = "type";
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -511,6 +510,7 @@ impl<'t> DisplayEscaped for MacroCode<'t> {
 /// <type category="define" name="...">
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "type")]
 pub struct GuardedDefine<'a> {
     #[xml(attribute())]
     pub name: &'a str,
@@ -529,7 +529,7 @@ pub struct GuardedDefine<'a> {
 /// <type category="define">...<name>...</name>...</type>
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized)]
+#[xml(tokenized, tag = "type")]
 pub struct MacroDefine<'a> {
     /// name of defined macro
     pub name: &'a str,
@@ -647,10 +647,14 @@ impl<'a> BitmaskType<'a> {
     }
 }
 
+impl<'a> crate::Tagged for BitmaskType<'a> {
+    const TAG: &'static str = "type";
+}
+
 /// <type category="handle">
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized)]
+#[xml(tokenized, tag = "type")]
 pub struct HandleType<'a> {
     /// name of this type
     pub name: &'a str,
@@ -684,6 +688,7 @@ impl<'a> Into<UnescapedStr<'a>> for HandleKind {
 /// <type category="enum">
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
+#[xml(tag = "type")]
 pub struct EnumType<'a> {
     /// name of this type
     #[xml(attribute())]
@@ -693,7 +698,7 @@ pub struct EnumType<'a> {
 /// <type category="funcpointer">
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized)]
+#[xml(tokenized, tag = "type")]
 pub struct FnPtrType<'a> {
     /// name of this type
     pub name: &'a str,
@@ -708,6 +713,7 @@ pub struct FnPtrType<'a> {
 /// <type category="struct">
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "type")]
 pub struct StructType<'a> {
     /// name of this type
     #[xml(attribute())]
@@ -734,6 +740,7 @@ pub struct StructType<'a> {
 /// <type category="union">
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
+#[xml(tag = "type")]
 pub struct UnionType<'a> {
     /// name of this type
     #[xml(attribute())]
@@ -847,15 +854,13 @@ impl<'a> ops::DerefMut for Member<'a> {
 impl<'a, 'de: 'a> crate::TryFromXML<'de> for IncludeType<'a> {
     fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(IncludeType {
-            name: attribute(node, "name")?,
+            name: crate::try_from_attribute(node, "name")?,
             is_local_include: node.text().map(|s| s.contains('"')),
         }))
     }
 }
 
 impl<'a> crate::IntoXMLElement for IncludeType<'a> {
-    const TAG: &'static str = "type";
-
     fn write_element<'w, W: ?Sized + crate::XMLWriter>(
         &self,
         element: crate::XMLElementBuilder<'static, 'w, W>,
@@ -884,15 +889,13 @@ impl<'a, 'de: 'a> crate::TryFromXML<'de> for BitmaskType<'a> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
-            api: try_attribute(node, "api")?,
+            api: crate::try_from_attribute(node, "api")?,
             ..TryFromTokens::try_from_node(node)?
         }))
     }
 }
 
 impl<'a> crate::IntoXMLElement for BitmaskType<'a> {
-    const TAG: &'static str = "type";
-
     fn write_element<'w, W: ?Sized + crate::XMLWriter>(
         &self,
         element: crate::XMLElementBuilder<'static, 'w, W>,

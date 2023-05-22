@@ -8,7 +8,7 @@ use std::{
 use roxmltree::Node;
 use vulkan_parse_derive_helper::DisplayEscaped;
 
-use crate::{attribute, try_attribute, ParseChildren, ParseResult, UnescapedStr, VulkanApi};
+use crate::{ParseResult, UnescapedStr, VulkanApi};
 
 #[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -75,11 +75,14 @@ impl<'a, T: 'a> FromIterator<MaybeComment<'a, T>> for CommentendChildren<'a, T> 
     }
 }
 
-impl<'node, T: crate::TryFromXML<'node>> ParseChildren<'node> for CommentendChildren<'node, T> {
-    fn from_children<'input: 'node>(
-        it: &mut crate::PeekableChildrenElements<'node, 'input>,
+impl<'xml, T> crate::TryFromXMLChildren<'xml> for CommentendChildren<'xml, T>
+where
+    Vec<MaybeComment<'xml, T>>: crate::TryFromXMLChildren<'xml>,
+{
+    fn try_from_children<'input: 'xml>(
+        it: &mut crate::PeekableChildrenElements<'xml, 'input>,
     ) -> ParseResult<Self> {
-        ParseChildren::from_children(it).map(CommentendChildren)
+        Vec::try_from_children(it).map(Self)
     }
 }
 
@@ -121,48 +124,13 @@ pub struct Alias<'a> {
     pub comment: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum DefinitionOrAlias<'a, T> {
-    // #[xml(discriminant(attr="alias"))]
+#[xml(tag = T::TAG)]
+pub enum DefinitionOrAlias<'a, T: crate::Tagged> {
+    #[xml(discriminant(attr = "alias"))]
     Alias(Alias<'a>),
     Definition(T),
-}
-
-impl<'a, 'de: 'a, T: crate::TryFromXML<'de>> crate::TryFromXML<'de> for DefinitionOrAlias<'a, T> {
-    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
-        if let Some(alias) = try_attribute(node, "alias")? {
-            Ok(Some(DefinitionOrAlias::Alias(Alias {
-                name: attribute(node, "name")?,
-                alias,
-                api: try_attribute(node, "api")?,
-                deprecated: try_attribute(node, "deprecated")?,
-                comment: try_attribute(node, "comment")?,
-            })))
-        } else {
-            Ok(T::try_from_xml(node)?.map(DefinitionOrAlias::Definition))
-        }
-    }
-}
-
-impl<'a, T: crate::IntoXMLElement> crate::IntoXMLElement for DefinitionOrAlias<'a, T> {
-    const TAG: &'static str = T::TAG;
-
-    fn add_static_attrs<'w, W: ?Sized + crate::XMLWriter>(
-        element: crate::XMLElementBuilder<'static, 'w, W>,
-    ) -> Result<crate::XMLElementBuilder<'static, 'w, W>, W::Error> {
-        T::add_static_attrs(element)
-    }
-
-    fn write_element<'w, W: ?Sized + crate::XMLWriter>(
-        &self,
-        element: crate::XMLElementBuilder<'static, 'w, W>,
-    ) -> Result<(), W::Error> {
-        match self {
-            DefinitionOrAlias::Alias(alias) => alias.write_element(element),
-            DefinitionOrAlias::Definition(defn) => defn.write_element(element),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromEscapedStr, DisplayEscaped)]
