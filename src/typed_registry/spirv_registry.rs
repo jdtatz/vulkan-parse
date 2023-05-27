@@ -1,44 +1,42 @@
 use std::fmt;
 
-use roxmltree::Node;
-
 use super::common::StdVersion;
 use crate::{Expression, StdVersionParseError};
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "spirvextension")]
+#[vkxml(tag = "spirvextension")]
 pub struct SpirvExtension<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     // TODO, usually the only diffrence between `name` & `enable_extension` is the prefix ("SPV_" vs "VK_"), but not always
-    #[xml(child)]
+    #[vkxml(child)]
     pub enable_version: Option<VersionEnable>,
-    #[xml(child)]
+    #[vkxml(child)]
     pub enable_extension: ExtensionEnable<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "spirvcapability")]
+#[vkxml(tag = "spirvcapability")]
 pub struct SpirvCapability<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
-    #[xml(child)]
+    #[vkxml(child)]
     pub enables: Vec<EnableSpirvCapability<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "enable")]
+#[vkxml(tag = "enable")]
 pub enum EnableSpirvCapability<'a> {
-    #[xml(discriminant(attr = "version"))]
+    #[vkxml(discriminant = "version")]
     Version(VersionEnable),
-    #[xml(discriminant(attr = "extension"))]
+    #[vkxml(discriminant = "extension")]
     Extension(ExtensionEnable<'a>),
-    #[xml(discriminant(attr = "struct"))]
+    #[vkxml(discriminant = "struct")]
     Struct(StructEnable<'a>),
-    #[xml(discriminant(attr = "property"))]
+    #[vkxml(discriminant = "property")]
     Property(PropertyEnable<'a>),
 }
 
@@ -74,53 +72,53 @@ impl<'a> fmt::Display for EnableRequires<'a> {
 }
 
 /// If the API version is supported, the SPIR-V extension or capability is enabled.
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "enable", discriminant(attr = "version"))]
+#[vkxml(tag = "enable", discriminant = "version")]
 pub struct VersionEnable {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub version: StdVersion,
 }
 
 /// If the API extension is supported and enabled, the SPIR-V extension or capability is enabled.
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "enable")]
+#[vkxml(tag = "enable")]
 pub struct ExtensionEnable<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub extension: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct StructEnable<'a> {
     /// API feature structure name
-    #[xml(attribute(rename = "struct"))]
+    #[vkxml(attribute(rename = "struct"))]
     pub name: &'a str,
     /// API feature name, matching the name of a member of the `name` structure
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub feature: &'a str,
     /// list of API feature version numbers and/or extension names.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: EnableRequires<'a>,
     /// Another API feature name which is an alias of `feature`. Needed when the same feature is provided by two different API versions or extensions.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub alias: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct PropertyEnable<'a> {
     /// API property structure name
-    #[xml(attribute(rename = "property"))]
+    #[vkxml(attribute(rename = "property"))]
     pub name: &'a str,
     /// API property name, matching the name of a member of the `name` structure
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub member: &'a str,
     /// A value, matching an API enum value. If the property is a bitfield, `value` must be a bitmask value belonging to the `member` bitfield type. Otherwise, `value` must be an enum name defined for the `member` enumeration type.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub value: Expression<'a>,
     /// list of API feature version numbers and/or extension names.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: EnableRequires<'a>,
 }

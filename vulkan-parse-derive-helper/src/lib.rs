@@ -1,7 +1,7 @@
 mod serialization;
 use crate::serialization::derive_xml_serialization;
 
-#[proc_macro_derive(XMLSerialization, attributes(xml))]
+#[proc_macro_derive(VkXMLConv, attributes(vkxml))]
 pub fn xml_serialization(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     derive_xml_serialization(&input).into()

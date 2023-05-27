@@ -1,77 +1,75 @@
 use std::{fmt, num::NonZeroU8, str::FromStr};
 
-use roxmltree::Node;
-
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "format")]
+#[vkxml(tag = "format")]
 pub struct Format<'a> {
     /// format name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// format class. A string whose value is shared by a group of formats which may be compatible, and is a textual description of something important that group has in common
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub class: &'a str,
     /// texel block size, in bytes, of the format
-    #[xml(attribute(rename = "blockSize"))]
+    #[vkxml(attribute(rename = "blockSize"))]
     pub block_size: NonZeroU8,
     /// number of texels in a texel block of the format
-    #[xml(attribute(rename = "texelsPerBlock"))]
+    #[vkxml(attribute(rename = "texelsPerBlock"))]
     pub texels_per_block: NonZeroU8,
     /// Three-dimensional extent of a texel block
-    #[xml(attribute(rename = "blockExtent"))]
+    #[vkxml(attribute(rename = "blockExtent"))]
     pub block_extent: Option<BlockExtent>,
     /// number of bits into which the format is packed
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub packed: Option<NonZeroU8>,
     /// general texture compression scheme
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub compressed: Option<&'a str>,
     /// The format's {YCbCr} encoding. Marks if {YCbCr} samplers are required by default when using this format
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub chroma: Option<FormatChroma>,
-    #[xml(child)]
+    #[vkxml(child)]
     pub children: Vec<FormatChild<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 
 pub enum FormatChild<'a> {
-    #[xml(tag = "component")]
+    #[vkxml(tag = "component")]
     Component {
         /// name of this component
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         name: ComponentName,
         /// number of bits in this component if it's not compressed
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         bits: ComponentBits,
         /// scalar data type of the component
-        #[xml(attribute(rename = "numericFormat"))]
+        #[vkxml(attribute(rename = "numericFormat"))]
         numeric_format: ComponentNumericFormat,
         /// which plane this component lies in
-        #[xml(attribute(rename = "planeIndex"))]
+        #[vkxml(attribute(rename = "planeIndex"))]
         plane_index: Option<u8>,
     },
-    #[xml(tag = "plane")]
+    #[vkxml(tag = "plane")]
     Plane {
         /// image plane being defined. Image planes are in the range [0,p-1] where p is the number of planes in the format.
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         index: u8,
         /// relative width of this plane. A value of k means that this plane is 1/k the width of the overall format.
-        #[xml(attribute(rename = "widthDivisor"))]
+        #[vkxml(attribute(rename = "widthDivisor"))]
         width_divisor: NonZeroU8,
         /// relative height of this plane. A value of k means that this plane is 1/k the height of the overall format.
-        #[xml(attribute(rename = "heightDivisor"))]
+        #[vkxml(attribute(rename = "heightDivisor"))]
         height_divisor: NonZeroU8,
         /// single-plane format that this plane is compatible with
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         compatible: &'a str,
     },
-    #[xml(tag = "spirvimageformat")]
+    #[vkxml(tag = "spirvimageformat")]
     SpirvImageFormat {
         /// name of the SPIR-V image format
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         name: &'a str,
     },
 }

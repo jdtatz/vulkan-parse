@@ -1,7 +1,5 @@
 use core::fmt;
 
-use roxmltree::Node;
-
 use super::common::{AliasDeprecationKind, CommentendChildren, SemVarVersion};
 use crate::{Expression, ParseResult, StdVersion, XMLElementBuilder};
 
@@ -48,28 +46,28 @@ impl fmt::Display for VulkanDependencies<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "feature")]
+#[vkxml(tag = "feature")]
 pub struct Feature<'a> {
     /// version C preprocessor name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// API tag used internally, not necessarily an actual API name
-    #[xml(attribute(seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(seperator = crate::CommaSeperator))]
     pub api: enumflags2::BitFlags<VulkanApi>,
     /// version number
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub number: SemVarVersion,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
     /// features to require/remove in this version
-    #[xml(child)]
+    #[vkxml(child)]
     pub children: Vec<FeatureChild<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum FeatureChild<'a> {
     /// features to require in this version
@@ -78,85 +76,85 @@ pub enum FeatureChild<'a> {
     Remove(Remove<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "require")]
+#[vkxml(tag = "require")]
 pub struct Require<'a> {
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
     /// API feature name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub feature: Option<StdVersion>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
-    #[xml(attribute(rename = "depends"))]
+    #[vkxml(attribute(rename = "depends"))]
     pub dependencies: Option<VulkanDependencies<'a>>,
-    #[xml(child)]
+    #[vkxml(child)]
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "remove")]
+#[vkxml(tag = "remove")]
 pub struct Remove<'a> {
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
     /// API feature name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub feature: Option<StdVersion>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
-    #[xml(attribute(rename = "depends"))]
+    #[vkxml(attribute(rename = "depends"))]
     pub dependencies: Option<VulkanDependencies<'a>>,
-    #[xml(child)]
+    #[vkxml(child)]
     pub values: CommentendChildren<'a, RequireValue<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum RequireValue<'a> {
-    #[xml(tag = "type")]
+    #[vkxml(tag = "type")]
     Type {
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         name: &'a str,
         /// descriptive text with no semantic meaning
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
-    #[xml(tag = "command")]
+    #[vkxml(tag = "command")]
     Command {
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         name: &'a str,
         /// descriptive text with no semantic meaning
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
     Enum(RequireEnum<'a>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "enum")]
+#[vkxml(tag = "enum")]
 pub struct RequireEnum<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: Option<&'a str>,
     /// name of a separately defined enumerated type to which the extension enumerant is added
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub extends: Option<&'a str>,
     /// If `None` then it's a Refrence Enum, otherwise it's an Extension Enum
-    #[xml(attribute(flattened))]
+    #[vkxml(attribute(flattened))]
     pub value: Option<RequireValueEnum<'a>>,
     /// preprocessor protection symbol for the enum
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub protect: Option<&'a str>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub deprecated: Option<AliasDeprecationKind>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 
@@ -197,7 +195,7 @@ pub enum RequireValueEnum<'a> {
 
 impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for RequireValueEnum<'a> {
     fn from_attributes<'input: 'xml>(
-        node: Node<'xml, 'input>,
+        node: roxmltree::Node<'xml, 'input>,
     ) -> ParseResult<Result<Self, &'static [&'static str]>> {
         if let Some(value) = crate::try_from_attribute(node, "value")? {
             Ok(Ok(RequireValueEnum::Value(value)))

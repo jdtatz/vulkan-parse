@@ -5,20 +5,17 @@ use std::{
     str::FromStr,
 };
 
-use roxmltree::Node;
-use vulkan_parse_derive_helper::DisplayEscaped;
-
 use crate::{ParseResult, UnescapedStr, VulkanApi};
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "comment")]
+#[vkxml(tag = "comment")]
 pub struct Comment<'a> {
-    #[xml(text)]
+    #[vkxml(text)]
     pub comment: UnescapedStr<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum MaybeComment<'a, T> {
     Comment(Comment<'a>),
@@ -109,26 +106,26 @@ pub enum AliasDeprecationKind {
     Aliased,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct Alias<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub alias: &'a str,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub deprecated: Option<AliasDeprecationKind>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = T::TAG)]
+#[vkxml(tag = T::TAG)]
 pub enum DefinitionOrAlias<'a, T: crate::Tagged> {
-    #[xml(discriminant(attr = "alias"))]
+    #[vkxml(discriminant = "alias")]
     Alias(Alias<'a>),
     Definition(T),
 }

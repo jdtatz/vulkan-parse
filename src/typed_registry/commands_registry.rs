@@ -1,59 +1,56 @@
 use core::{fmt, ops};
 
-use roxmltree::Node;
-use vulkan_parse_derive_helper::DisplayEscaped;
-
 use super::{FieldLike, VulkanApi};
 
 /// Structured definition of a single API command (function)
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "command")]
+#[vkxml(tag = "command")]
 pub struct Command<'a> {
     /// C function prototype, including the return type
-    #[xml(child)]
+    #[vkxml(child)]
     pub proto: Proto<'a>,
     /// function parameters
-    #[xml(child)]
+    #[vkxml(child)]
     pub params: Vec<CommandParam<'a>>,
     /// possible successful return codes from the command
-    #[xml(attribute(rename = "successcodes"))]
+    #[vkxml(attribute(rename = "successcodes"))]
     pub success_codes: Option<SuccessCodes<'a>>,
     /// possible error return codes from the command
-    #[xml(attribute(rename = "errorcodes", seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(rename = "errorcodes", seperator = crate::CommaSeperator))]
     pub error_codes: Option<Vec<&'a str>>,
     /// the command queues this command can be placed on
-    #[xml(attribute(seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(seperator = crate::CommaSeperator))]
     pub queues: Option<enumflags2::BitFlags<Queue>>,
     /// the command buffer levels that this command can be called by
-    #[xml(attribute(rename = "cmdbufferlevel", seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(rename = "cmdbufferlevel", seperator = crate::CommaSeperator))]
     pub cmd_buffer_level: Option<enumflags2::BitFlags<CommandBufferLevel>>,
     /// spec-language descriptions of objects that are not parameters of the command, but are related to them and also require external synchronization
-    #[xml(child)]
+    #[vkxml(child)]
     pub implicit_extern_sync_params: Option<ImplicitExternSyncParams<'a>>,
     /// the tasks this command performs, as described in the “Queue Operation” section of the Vulkan Specification
-    #[xml(attribute(seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(seperator = crate::CommaSeperator))]
     pub tasks: Option<enumflags2::BitFlags<Task>>,
     /// whether the command can be issued only inside a video coding scope, only outside a video coding scope, or both. The default is outside
-    #[xml(attribute(rename = "videocoding"))]
+    #[vkxml(attribute(rename = "videocoding"))]
     pub video_coding: Option<ScopeValidity>,
     /// whether the command can be issued only inside a render pass, only outside a render pass, or both.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub renderpass: Option<ScopeValidity>,
     /// which vulkan api the command belongs to
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 
 /// C function prototype of a command, up to the function name and return type but not including function parameters
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "proto")]
+#[vkxml(tag = "proto")]
 pub struct Proto<'a> {
-    #[xml(flatten)]
+    #[vkxml(flatten)]
     pub base: FieldLike<'a>,
 }
 
@@ -71,22 +68,22 @@ impl<'a> ops::DerefMut for Proto<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "param")]
+#[vkxml(tag = "param")]
 pub struct CommandParam<'a> {
-    #[xml(flatten)]
+    #[vkxml(flatten)]
     pub base: FieldLike<'a>,
     /// only applicable for parameters which are pointers to
     /// VkBaseInStructure or VkBaseOutStructure types, used as abstract
     /// placeholders. Specifies a list of structures which
     /// may be passed in place of the parameter, or anywhere in the pNext
     /// chain of the parameter.
-    #[xml(attribute(rename = "validstructs", seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(rename = "validstructs", seperator = crate::CommaSeperator))]
     pub valid_structs: Option<Vec<&'a str>>,
     /// name of param containing the byte stride between consecutive elements in this array.
     /// Is assumed tightly packed if omitted.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub stride: Option<&'a str>,
 }
 
@@ -104,20 +101,20 @@ impl<'a> ops::DerefMut for CommandParam<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "param")]
+#[vkxml(tag = "param")]
 pub struct ImplicitExternSyncParam<'a> {
-    #[xml(text)]
+    #[vkxml(text)]
     pub description: &'a str,
 }
 
 /// spec-language descriptions of objects that are not parameters of the command, but are related to them and also require external synchronization
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "implicitexternsyncparams")]
+#[vkxml(tag = "implicitexternsyncparams")]
 pub struct ImplicitExternSyncParams<'a> {
-    #[xml(child)]
+    #[vkxml(child)]
     pub params: Vec<ImplicitExternSyncParam<'a>>,
 }
 

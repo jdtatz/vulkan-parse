@@ -6,9 +6,6 @@ use std::{
     str::FromStr,
 };
 
-use roxmltree::Node;
-use vulkan_parse_derive_helper::DisplayEscaped;
-
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
     tokenize, DisplayEscaped, Expression, ParseResult, Token, TryFromEscapedStr, TryFromTokens,
@@ -98,7 +95,7 @@ pub enum DynamicShapeKind<'a> {
 
 impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for DynamicShapeKind<'a> {
     fn from_attributes<'input: 'xml>(
-        node: Node<'xml, 'input>,
+        node: roxmltree::Node<'xml, 'input>,
     ) -> ParseResult<Result<Self, &'static [&'static str]>> {
         if let Some(len) = crate::try_from_attribute::<Option<&str>>(node, "len")? {
             Ok(Ok(
@@ -329,9 +326,9 @@ pub enum FieldLikeSizing<'a> {
     ArrayShape(Vec<ArrayLength<'a>>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized)]
+#[vkxml(tokenized)]
 pub struct FieldLike<'a> {
     pub name: &'a str,
     pub type_name: TypeSpecifier<'a>,
@@ -339,26 +336,26 @@ pub struct FieldLike<'a> {
     pub is_const: bool,
     pub pointer_kind: Option<PointerKind>,
     pub sizing: Option<FieldLikeSizing<'a>>,
-    #[xml(attribute(flattened))]
+    #[vkxml(attribute(flattened))]
     pub dynamic_shape: Option<DynamicShapeKind<'a>>,
     /// denotes that the member should be externally synchronized when accessed by Vulkan
-    #[xml(attribute(rename = "externsync"))]
+    #[vkxml(attribute(rename = "externsync"))]
     pub extern_sync: Option<ExternSyncKind<'a>>,
     /// whether this value can be omitted by providing NULL (for pointers), VK_NULL_HANDLE (for handles) or 0 (for bitmasks/values)
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub optional: Option<OptionalKind>,
     /// no automatic validity language should be generated
-    #[xml(attribute(rename = "noautovalidity"))]
+    #[vkxml(attribute(rename = "noautovalidity"))]
     pub no_auto_validity: Option<NoAutoValidityKind>,
     /// The field-like that paramertizes what type of vulkan handle this one is.
     /// => This field-like is a generic vulkan handle, and it is an error if `type_name` isn't `uint64_t`
-    #[xml(attribute(rename = "objecttype"))]
+    #[vkxml(attribute(rename = "objecttype"))]
     pub object_type: Option<&'a str>,
     /// which vulkan api this belongs to
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
     /// If this field-like is deprecated, and how it is e.g. ignored
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub deprecated: Option<FieldLikeDeprecationKind>,
     /// descriptive text with no semantic meaning
     pub comment: Option<UnescapedStr<'a>>,
@@ -402,51 +399,51 @@ impl<'a> FieldLike<'a> {
 }
 
 /// <type>
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub enum Type<'a> {
     /// <type category="include">
-    #[xml(discriminant(attr = "category", value = "include"))]
+    #[vkxml(discriminant(category = "include"))]
     Include(IncludeType<'a>),
     /// <type category="define">
-    #[xml(discriminant(attr = "category", value = "define"))]
+    #[vkxml(discriminant(category = "define"))]
     Define(DefineType<'a>),
     /// <type category="basetype">
-    #[xml(discriminant(attr = "category", value = "basetype"))]
+    #[vkxml(discriminant(category = "basetype"))]
     BaseType(BaseTypeType<'a>),
     /// <type category="bitmask">
-    #[xml(discriminant(attr = "category", value = "bitmask"))]
+    #[vkxml(discriminant(category = "bitmask"))]
     Bitmask(DefinitionOrAlias<'a, BitmaskType<'a>>),
     /// <type category="handle">
-    #[xml(discriminant(attr = "category", value = "handle"))]
+    #[vkxml(discriminant(category = "handle"))]
     Handle(DefinitionOrAlias<'a, HandleType<'a>>),
     /// <type category="enum">
-    #[xml(discriminant(attr = "category", value = "enum"))]
+    #[vkxml(discriminant(category = "enum"))]
     Enum(DefinitionOrAlias<'a, EnumType<'a>>),
     /// <type category="funcpointer">
-    #[xml(discriminant(attr = "category", value = "funcpointer"))]
+    #[vkxml(discriminant(category = "funcpointer"))]
     FnPtr(FnPtrType<'a>),
     /// <type category="struct">
-    #[xml(discriminant(attr = "category", value = "struct"))]
+    #[vkxml(discriminant(category = "struct"))]
     Struct(DefinitionOrAlias<'a, StructType<'a>>),
     /// <type category="union">
-    #[xml(discriminant(attr = "category", value = "union"))]
+    #[vkxml(discriminant(category = "union"))]
     Union(UnionType<'a>),
     /// <type> without category attribute
     Requires(RequiresType<'a>),
 }
 
 /// <type> without category attribute
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub struct RequiresType<'a> {
     /// name of this type
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// name of another type definition required by this one
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: Option<&'a str>,
 }
 
@@ -508,40 +505,40 @@ impl<'t> DisplayEscaped for MacroCode<'t> {
 }
 
 /// <type category="define" name="...">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub struct GuardedDefine<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
     /// name of another type definition required by this one
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: Option<&'a str>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
-    #[xml(text)]
+    #[vkxml(text)]
     pub code: MacroCode<'a>,
 }
 
 /// <type category="define">...<name>...</name>...</type>
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized, tag = "type")]
+#[vkxml(tokenized, tag = "type")]
 pub struct MacroDefine<'a> {
     /// name of defined macro
     pub name: &'a str,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
     /// name of another type or macro definition required by this one
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: Option<&'a str>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub deprecated: Option<bool>,
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
     pub deprecation_comment: Option<&'a str>,
     pub is_disabled: bool,
@@ -549,11 +546,11 @@ pub struct MacroDefine<'a> {
 }
 
 /// <type category="define">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub enum DefineType<'a> {
-    #[xml(discriminant(attr = "name"))]
+    #[vkxml(discriminant = "name")]
     GuardedMacro(GuardedDefine<'a>),
     Macro(MacroDefine<'a>),
 }
@@ -589,9 +586,9 @@ impl<'a> MacroDefineValue<'a> {
 // NOTE: IOSurfaceRef is incorrectly `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
 //       but should be  `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;`
 /// <type category="basetype">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "type", tokenized)]
+#[vkxml(tag = "type", tokenized)]
 pub enum BaseTypeType<'a> {
     /// Forward declaration of a struct
     Forward(&'a str),
@@ -652,18 +649,18 @@ impl<'a> crate::Tagged for BitmaskType<'a> {
 }
 
 /// <type category="handle">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized, tag = "type")]
+#[vkxml(tokenized, tag = "type")]
 pub struct HandleType<'a> {
     /// name of this type
     pub name: &'a str,
     pub handle_kind: HandleKind,
     /// name of VK_OBJECT_TYPE_* API enumerant which corresponds to this type.
-    #[xml(attribute(rename = "objtypeenum"))]
+    #[vkxml(attribute(rename = "objtypeenum"))]
     pub obj_type_enum: &'a str,
     /// Notes another handle type that acts as a parent object for this type.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub parent: Option<&'a str>,
 }
 
@@ -686,72 +683,72 @@ impl<'a> Into<UnescapedStr<'a>> for HandleKind {
 }
 
 /// <type category="enum">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub struct EnumType<'a> {
     /// name of this type
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
 }
 
 /// <type category="funcpointer">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tokenized, tag = "type")]
+#[vkxml(tokenized, tag = "type")]
 pub struct FnPtrType<'a> {
     /// name of this type
     pub name: &'a str,
     pub return_type_name: TypeSpecifier<'a>,
     pub return_type_pointer_kind: Option<PointerKind>,
     /// name of another type definition required by this one
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: Option<&'a str>,
     pub params: Option<Vec<FieldLike<'a>>>,
 }
 
 /// <type category="struct">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub struct StructType<'a> {
     /// name of this type
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
-    #[xml(child)]
+    #[vkxml(child)]
     pub members: CommentendChildren<'a, Member<'a>>,
     /// Notes that this struct is going to be filled in by the API, rather than an application filling it out and passing it to the API.
-    #[xml(attribute(rename = "returnedonly"))]
+    #[vkxml(attribute(rename = "returnedonly"))]
     pub returned_only: Option<bool>,
     /// Lists parent structures which this structure may extend via the `pNext` chain of the parent.
-    #[xml(attribute(seperator = "crate::CommaSeperator", rename = "structextends"))]
+    #[vkxml(attribute(seperator = crate::CommaSeperator, rename = "structextends"))]
     pub struct_extends: Option<Vec<&'a str>>,
     /// `pNext` can include multiple structures of this type.
-    #[xml(attribute(rename = "allowduplicate"))]
+    #[vkxml(attribute(rename = "allowduplicate"))]
     pub allow_duplicate: Option<bool>,
     /// name of another type definition required by this one
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub requires: Option<&'a str>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 
 /// <type category="union">
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "type")]
+#[vkxml(tag = "type")]
 pub struct UnionType<'a> {
     /// name of this type
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
-    #[xml(child)]
+    #[vkxml(child)]
     pub members: CommentendChildren<'a, Member<'a>>,
     /// Notes that this union is going to be filled in by the API, rather than an application filling it out and passing it to the API.
-    #[xml(attribute(rename = "returnedonly"))]
+    #[vkxml(attribute(rename = "returnedonly"))]
     pub returned_only: Option<bool>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 
@@ -816,24 +813,24 @@ pub enum MemberLimitType {
 }
 
 /// <member>
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "member")]
+#[vkxml(tag = "member")]
 pub struct Member<'a> {
-    #[xml(flatten)]
+    #[vkxml(flatten)]
     pub base: FieldLike<'a>,
     /// for a union member, identifies a separate enum member that selects which of the union's members are valid
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub selector: Option<MemberSelector>,
     /// for a member of a union, identifies an enum value indicating the member is valid
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub selection: Option<&'a str>,
     /// list of legal values, usually used only for `sType` enums
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub values: Option<&'a str>,
     /// Specifies the type of a device limit.
     /// only applicable for members of VkPhysicalDeviceProperties and VkPhysicalDeviceProperties2, their substructures, and extensions.
-    #[xml(attribute(rename = "limittype"))]
+    #[vkxml(attribute(rename = "limittype"))]
     pub limit_type: Option<MemberLimitType>,
 }
 
@@ -852,7 +849,7 @@ impl<'a> ops::DerefMut for Member<'a> {
 }
 
 impl<'a, 'de: 'a> crate::TryFromXML<'de> for IncludeType<'a> {
-    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
+    fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(IncludeType {
             name: crate::try_from_attribute(node, "name")?,
             is_local_include: node.text().map(|s| s.contains('"')),
@@ -885,7 +882,7 @@ impl<'a> crate::IntoXMLElement for IncludeType<'a> {
 }
 
 impl<'a, 'de: 'a> crate::TryFromXML<'de> for BitmaskType<'a> {
-    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> ParseResult<Option<Self>> {
+    fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> ParseResult<Option<Self>> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
             has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),

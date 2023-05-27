@@ -4,111 +4,109 @@ use std::{
     str::FromStr,
 };
 
-use roxmltree::Node;
-
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{Expression, UnescapedStr};
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "enums")]
+#[vkxml(tag = "enums")]
 pub struct Enums<'a> {
     /// name of the corresponding <type> associated with this group
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// bit width of the enum value type. If omitted, a default value of 32 is used.
-    #[xml(attribute(rename = "bitwidth"))]
+    #[vkxml(attribute(rename = "bitwidth"))]
     pub bit_width: Option<NonZeroU8>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<UnescapedStr<'a>>,
-    #[xml(flatten)]
+    #[vkxml(flatten)]
     pub values: EnumsValues<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "enums")]
+#[vkxml(tag = "enums")]
 pub enum EnumsValues<'a> {
     // type="enum"
     /// An enum where each value is distinct
-    #[xml(discriminant(attr = "type", value = "enum"))]
+    #[vkxml(discriminant(r#type = "enum"))]
     Enum {
-        #[xml(child)]
+        #[vkxml(child)]
         values: CommentendChildren<'a, DefinitionOrAlias<'a, ValueEnum<'a>>>,
-        #[xml(child)]
+        #[vkxml(child)]
         unused_values: Option<UnusedEnum<'a>>,
     },
     // type="bitmask"
     /// An enum where the values constitute a bitmask
-    #[xml(discriminant(attr = "type", value = "bitmask"))]
+    #[vkxml(discriminant(r#type = "bitmask"))]
     Bitmask {
-        #[xml(child)]
+        #[vkxml(child)]
         values: CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>,
     },
     // no type attribute
     /// Hardcoded constants, not an enumerated type
     Constants {
-        #[xml(child)]
+        #[vkxml(child)]
         constants: CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "enum")]
+#[vkxml(tag = "enum")]
 pub struct ConstantEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// a C scalar type corresponding to the type of `value`, although only uint32_t, uint64_t, and float are currently meaningful
-    #[xml(attribute(rename = "type"))]
+    #[vkxml(attribute(rename = "type"))]
     pub type_name: &'a str,
     /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub value: Expression<'a>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<UnescapedStr<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "enum")]
+#[vkxml(tag = "enum")]
 pub struct ValueEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// numeric value in the form of a legal C expression when evaluated at compile time in the generated header files
-    #[xml(attribute(mapped = "RadixInt"))]
+    #[vkxml(attribute(mapped = "RadixInt"))]
     pub value: i64,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<UnescapedStr<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "enum")]
+#[vkxml(tag = "enum")]
 pub struct BitPosEnum<'a> {
     /// Enumerant name, a legal C preprocessor token name
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// literal integer bit position in a bitmask
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub bitpos: u8,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<UnescapedStr<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "enum")]
+#[vkxml(tag = "enum")]
 pub enum BitmaskEnum<'a> {
-    #[xml(discriminant(attr = "value"))]
+    #[vkxml(discriminant = "value")]
     Value(ValueEnum<'a>),
-    #[xml(discriminant(attr = "bitpos"))]
+    #[vkxml(discriminant = "bitpos")]
     BitPos(BitPosEnum<'a>),
 }
 
@@ -131,15 +129,15 @@ impl<'a> BitmaskEnum<'a> {
 
 // <enums type="enum"> ... <unused /> </<enums>
 /// defines a range of enumerants not currently being used
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "unused")]
+#[vkxml(tag = "unused")]
 pub struct UnusedEnum<'a> {
     /// defines a single unused enumerant
-    #[xml(attribute(mapped = "RadixInt"))]
+    #[vkxml(attribute(mapped = "RadixInt"))]
     pub start: i64,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 

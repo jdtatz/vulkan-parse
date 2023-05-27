@@ -4,7 +4,7 @@ use darling::{
 };
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
-use syn::{DeriveInput, Ident, Path, PathSegment};
+use syn::{ext::IdentExt, DeriveInput, Ident, Path, PathSegment};
 
 #[derive(Debug)]
 struct TagAttr(syn::Expr);
@@ -20,27 +20,51 @@ impl ToTokens for TagAttr {
         self.0.to_tokens(tokens)
     }
 }
+#[derive(Debug, Clone)]
+enum WordOrList<T> {
+    Word,
+    Value(T),
+}
 
-#[derive(Debug, Default, FromMeta)]
+impl<T: Default> WordOrList<T> {
+    fn into_value_or_default(self) -> T {
+        match self {
+            WordOrList::Word => T::default(),
+            WordOrList::Value(v) => v,
+        }
+    }
+}
+
+impl<T: FromMeta> FromMeta for WordOrList<T> {
+    fn from_list(items: &[darling::export::NestedMeta]) -> darling::Result<Self> {
+        T::from_list(items).map(WordOrList::Value)
+    }
+
+    fn from_word() -> darling::Result<Self> {
+        Ok(Self::Word)
+    }
+}
+
+#[derive(Debug, Clone, Default, FromMeta)]
 struct XMLSerializationDeriveXAttribute {
     #[darling(default)]
     rename: Option<String>,
     #[darling(default)]
-    seperator: Option<Path>,
+    seperator: Option<syn::ExprPath>,
     #[darling(default)]
-    mapped: Option<Path>,
+    mapped: Option<syn::ExprPath>,
     #[darling(default)]
     flattened: Flag,
 }
 
 #[derive(Debug, FromField)]
-#[darling(attributes(xml))]
+#[darling(attributes(vkxml))]
 struct XMLSerializationDeriveField {
     ident: Option<Ident>,
     // ty: syn::Type,
     // attributes
     #[darling(default, rename = "attribute")]
-    attribute_opts: Option<XMLSerializationDeriveXAttribute>,
+    attribute_opts: Option<WordOrList<XMLSerializationDeriveXAttribute>>,
     #[darling(default, rename = "child")]
     child_opts: Flag,
     #[darling(default)]
@@ -52,7 +76,7 @@ struct XMLSerializationDeriveField {
 struct SplitFields<'s> {
     flattened: Option<Option<&'s Ident>>,
     text: Option<Option<&'s Ident>>,
-    attrs: Vec<(Option<&'s Ident>, &'s XMLSerializationDeriveXAttribute)>,
+    attrs: Vec<(Option<&'s Ident>, XMLSerializationDeriveXAttribute)>,
     children: Vec<Option<&'s Ident>>,
 }
 
@@ -84,7 +108,7 @@ impl<'s> TryFrom<&'s [SpannedValue<XMLSerializationDeriveField>]> for SplitField
                         "An attribute member can't be child/text as well",
                     ));
                 }
-                attrs.push((f.ident.as_ref(), attr))
+                attrs.push((f.ident.as_ref(), attr.clone().into_value_or_default()))
             } else if f.text.is_present() {
                 if text.replace(f.ident.as_ref()).is_some() {
                     return Err(syn::Error::new(
@@ -314,11 +338,58 @@ fn named_field_serialization_impl(
     }
 }
 
-#[derive(Debug, Default, FromMeta)]
+#[derive(Debug, Default)]
 struct VariantDiscriminantOpts {
     attr: String,
-    #[darling(default)]
     value: Option<String>,
+}
+
+impl FromMeta for VariantDiscriminantOpts {
+    fn from_list(items: &[darling::export::NestedMeta]) -> darling::Result<Self> {
+        match items {
+            [] => Err(darling::Error::too_few_items(1)),
+            [
+                darling::export::NestedMeta::Meta(syn::Meta::NameValue(syn::MetaNameValue {
+                    path,
+                    value,
+                    ..
+                })),
+            ] => {
+                if let Some(ident) = path.get_ident() {
+                    let attr = ident.unraw().to_string();
+                    if let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(value),
+                        ..
+                    }) = value
+                    {
+                        Ok(VariantDiscriminantOpts {
+                            attr,
+                            value: Some(value.value()),
+                        })
+                    } else {
+                        Err(darling::Error::unexpected_expr_type(value))
+                    }
+                } else {
+                    Err(darling::Error::unknown_field_path(path))
+                }
+            }
+            [darling::export::NestedMeta::Meta(syn::Meta::List(_))] => {
+                Err(darling::Error::unsupported_format("list"))
+            }
+            [darling::export::NestedMeta::Meta(syn::Meta::Path(_))] => {
+                Err(darling::Error::unsupported_format("word"))
+            }
+            [darling::export::NestedMeta::Lit(l)] => Err(darling::Error::unexpected_lit_type(l)),
+            _ => Err(darling::Error::too_many_items(1)),
+        }
+    }
+
+    fn from_string(value: &str) -> darling::Result<Self> {
+        Ok(Self {
+            attr: value.into(),
+            value: None,
+        })
+    }
 }
 
 impl VariantDiscriminantOpts {
@@ -336,7 +407,7 @@ impl VariantDiscriminantOpts {
 }
 
 #[derive(Debug, FromVariant)]
-#[darling(attributes(xml))]
+#[darling(attributes(vkxml))]
 struct XMLSerializationDeriveVariant {
     ident: Ident,
     fields: darling::ast::Fields<SpannedValue<XMLSerializationDeriveField>>,
@@ -379,23 +450,6 @@ impl XMLSerializationDeriveVariant {
                     Ok(Some(#variant_path(v)))
                 }
             }),
-            // (darling::ast::Style::Tuple, None, discriminant, fields) if fields.iter().all(|f| f.ident.is_none()) => {
-            //     let telems = fields.iter().enumerate().map(|(i, _)| format_ident!("v{i}")).collect::<Vec<_>>();
-            //     if let Some(guard) = named_field_deserialization_guard(None, discriminant) {
-            //         Ok(quote! {
-            //             if #guard {
-            //                 let ( #(#telems),* ) = crate::parse_children(node)?;
-            //                 Ok(Some(#variant_path(#(#telems),*)))
-            //             }
-            //         })
-            //     } else {
-            //         Ok(quote! {
-            //             if let Some(( #(#telems),* )) = crate::parse_children(node)? {
-            //                 Ok(Some(#variant_path(#(#telems),*)))
-            //             }
-            //         })
-            //     }
-            // }
             (darling::ast::Style::Struct, Some(guard), fields) => {
                 let inner = named_field_deserialization_impl(&variant_path, fields, false)?;
                 Ok(quote! {
@@ -501,7 +555,7 @@ impl XMLSerializationDeriveVariant {
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(attributes(xml))]
+#[darling(attributes(vkxml))]
 pub struct XMLSerializationDeriveInput {
     ident: Ident,
     generics: syn::Generics,
@@ -533,7 +587,7 @@ fn enum_impl(
         if let Some(tag) = tag {
             return Ok(quote! {
                 impl #de_impl_generics crate::TryFromXML<'de> for #enum_ident #ty_generics #de_where_clause {
-                    fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
+                    fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
                         if node.has_tag_name(#tag) {
                             Ok(Some(crate::TryFromTokens::try_from_node(node)?))
                         } else {
@@ -571,7 +625,7 @@ fn enum_impl(
         // FIXME
         Ok(quote! {
             impl #de_impl_generics crate::TryFromXML<'de> for #enum_ident #ty_generics #de_where_clause {
-                fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
+                fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
                     if !node.has_tag_name(#tag) {
                         Ok(None)
                     } else
@@ -598,7 +652,7 @@ fn enum_impl(
     } else {
         Ok(quote! {
             impl #de_impl_generics crate::TryFromXML<'de> for #enum_ident #ty_generics #de_where_clause {
-                fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
+                fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
                     #(
                         #deser else
                     )*
@@ -656,7 +710,7 @@ fn struct_impl(
     };
     Ok(quote! {
         impl #de_impl_generics crate::TryFromXML<'de> for #struct_ident #ty_generics #de_where_clause {
-            fn try_from_xml<'input: 'de>(node: Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
+            fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
                 #deser_impl
             }
         }

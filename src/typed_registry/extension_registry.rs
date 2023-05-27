@@ -1,8 +1,6 @@
 use core::str::FromStr;
 use std::fmt;
 
-use roxmltree::Node;
-
 use super::{
     common::StdVersion,
     feature_registry::{Require, VulkanApi},
@@ -90,77 +88,77 @@ impl<'a> fmt::Display for ExtensionPromotion<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "extension")]
+#[vkxml(tag = "extension")]
 pub struct Extension<'a> {
     /// extension name string
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// extension number (positive integer, should be unique)
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub number: u32,
-    #[xml(attribute(rename = "type"))]
+    #[vkxml(attribute(rename = "type"))]
     pub kind: Option<ExtensionKind>,
     /// profile name(s) supporting this extension, e.g. 'vulkan' or 'disabled' to never generate output.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub supported: ExtensionSupport,
     /// vulkan versions / extensions required
-    #[xml(attribute(rename = "depends"))]
+    #[vkxml(attribute(rename = "depends"))]
     pub dependencies: Option<VulkanDependencies<'a>>,
     /// vulkan apis that the extension has been ratified by Khronos for
-    #[xml(attribute(seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(seperator = crate::CommaSeperator))]
     pub ratified: Option<enumflags2::BitFlags<VulkanApi>>,
 
     // Only missing for VK_RESERVED_do_not_use_94 & VK_RESERVED_do_not_use_146
     /// name of the author (usually a company or project name)
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub author: Option<&'a str>,
     // Only missing for VK_KHR_mir_surface, VK_RESERVED_do_not_use_94, & VK_RESERVED_do_not_use_146
     /// contact responsible for the tag (name and contact information)
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub contact: Option<&'a str>,
     /// Vulkan version or a name of an extension that this extension was promoted to
-    #[xml(attribute(rename = "promotedto"))]
+    #[vkxml(attribute(rename = "promotedto"))]
     pub promoted_to: Option<ExtensionPromotion<'a>>,
     /// Vulkan version or a name of an extension that deprecates this extension
-    #[xml(attribute(rename = "deprecatedby"))]
+    #[vkxml(attribute(rename = "deprecatedby"))]
     pub deprecated_by: Option<ExtensionPromotion<'a>>,
     /// Vulkan version or a name of an extension that obsoletes this extension
-    #[xml(attribute(rename = "obsoletedby"))]
+    #[vkxml(attribute(rename = "obsoletedby"))]
     pub obsoleted_by: Option<ExtensionPromotion<'a>>,
     /// order relative to other extensions, default 0
-    #[xml(attribute(rename = "sortorder"))]
+    #[vkxml(attribute(rename = "sortorder"))]
     pub sort_order: Option<i32>,
     /// should be one of the platform names defined in the <platform> tag.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub platform: Option<&'a str>,
     /// is this extension released provisionally
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub provisional: Option<bool>,
     /// List of the extension's special purposes
-    #[xml(attribute(rename = "specialuse", seperator = "crate::CommaSeperator"))]
+    #[vkxml(attribute(rename = "specialuse", seperator = crate::CommaSeperator))]
     pub special_use: Option<Vec<&'a str>>,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
-    #[xml(child)]
+    #[vkxml(child)]
     pub requires: Vec<Require<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "extension")]
+#[vkxml(tag = "extension")]
 pub struct PseudoExtension<'a> {
     /// extension name string
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// profile name(s) supporting this extension, e.g. 'vulkan' or 'disabled' to never generate output.
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub supported: ExtensionSupport,
     /// descriptive text with no semantic meaning
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
-    #[xml(child)]
+    #[vkxml(child)]
     pub requires: Vec<Require<'a>>,
 }

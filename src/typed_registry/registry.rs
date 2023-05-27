@@ -1,5 +1,3 @@
-use roxmltree::Node;
-
 use super::{
     commands_registry::Command,
     common::{CommentendChildren, DefinitionOrAlias},
@@ -11,109 +9,109 @@ use super::{
     types_registry::Type,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "registry")]
+#[vkxml(tag = "registry")]
 pub struct Registry<'a> {
-    #[xml(child)]
+    #[vkxml(child)]
     pub registry: CommentendChildren<'a, Items<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum Items<'a> {
-    #[xml(tag = "platforms")]
+    #[vkxml(tag = "platforms")]
     Platforms {
-        #[xml(child)]
+        #[vkxml(child)]
         platforms: Vec<Platform<'a>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
-    #[xml(tag = "tags")]
+    #[vkxml(tag = "tags")]
     Tags {
-        #[xml(child)]
+        #[vkxml(child)]
         tags: Vec<Tag<'a>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
-    #[xml(tag = "types")]
+    #[vkxml(tag = "types")]
     Types {
-        #[xml(child)]
+        #[vkxml(child)]
         types: CommentendChildren<'a, Type<'a>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
     Enums(Enums<'a>),
-    #[xml(tag = "commands")]
+    #[vkxml(tag = "commands")]
     Commands {
-        #[xml(child)]
+        #[vkxml(child)]
         commands: CommentendChildren<'a, DefinitionOrAlias<'a, Command<'a>>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
     Features(Feature<'a>),
-    #[xml(tag = "extensions")]
+    #[vkxml(tag = "extensions")]
     Extensions {
-        #[xml(child)]
+        #[vkxml(child)]
         extensions: Vec<WrappedExtension<'a>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
-    #[xml(tag = "formats")]
+    #[vkxml(tag = "formats")]
     Formats {
-        #[xml(child)]
+        #[vkxml(child)]
         formats: Vec<Format<'a>>,
     },
-    #[xml(tag = "spirvextensions")]
+    #[vkxml(tag = "spirvextensions")]
     SpirvExtensions {
-        #[xml(child)]
+        #[vkxml(child)]
         extensions: Vec<SpirvExtension<'a>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
-    #[xml(tag = "spirvcapabilities")]
+    #[vkxml(tag = "spirvcapabilities")]
     SpirvCapabilities {
-        #[xml(child)]
+        #[vkxml(child)]
         capabilities: Vec<SpirvCapability<'a>>,
-        #[xml(attribute())]
+        #[vkxml(attribute)]
         comment: Option<&'a str>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
-#[xml(tag = "platform")]
+#[vkxml(tag = "platform")]
 pub struct Platform<'a> {
     /// name of the platform, used as part of extension names
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// preprocessor symbol to include platform headers from <vulkan.h>
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub protect: &'a str,
     /// platform description
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub comment: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "tag")]
+#[vkxml(tag = "tag")]
 pub struct Tag<'a> {
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub name: &'a str,
     /// name of the author (usually a company or project name)
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub author: &'a str,
     /// contact responsible for the tag (name and contact information)
-    #[xml(attribute())]
+    #[vkxml(attribute)]
     pub contact: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, XMLSerialization)]
+#[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[xml(tag = "extension")]
+#[vkxml(tag = "extension")]
 pub enum WrappedExtension<'a> {
-    #[xml(discriminant(attr = "number"))]
+    #[vkxml(discriminant = "number")]
     Extension(Extension<'a>),
     PseudoExtension(PseudoExtension<'a>),
 }
