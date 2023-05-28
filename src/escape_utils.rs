@@ -51,51 +51,40 @@ impl<'s> From<&'s str> for UnescapedStr<'s> {
     }
 }
 
-// // FIXME impl once we switch from `roxmltree`
-// impl<'s> FromEscapedStr<'s> for UnescapedStr<'s> {
-//     fn from_escaped_str(s: &'s str) -> Self {
-//         if s.contains('&') {
-//             // Self(Cow::Owned(
-//             //     s.replace("&quot;", "\"")
-//             //         .replace("&apos;", "'")
-//             //         .replace("&lt;", "<")
-//             //         .replace("&gt;", ">")
-//             //         .replace("&amp;", "&"),
-//             // ))
-//             let mut unescaped = String::with_capacity(s.len());
-//             for v in s.split('&') {
-//                 if let Some(v) = v.strip_prefix("quot;") {
-//                     unescaped.push('"');
-//                     unescaped.push_str(v)
-//                 } else if let Some(v) = v.strip_prefix("apos;") {
-//                     unescaped.push('\'');
-//                     unescaped.push_str(v)
-//                 }else if let Some(v) = v.strip_prefix("lt;") {
-//                     unescaped.push('<');
-//                     unescaped.push_str(v)
-//                 }else if let Some(v) = v.strip_prefix("gt;") {
-//                     unescaped.push('>');
-//                     unescaped.push_str(v)
-//                 }else if let Some(v) = v.strip_prefix("amp;") {
-//                     unescaped.push('&');
-//                     unescaped.push_str(v)
-//                 } else {
-//                     unescaped.push_str(v)
-//                 }
-//             }
-//             Self(Cow::Owned(unescaped))
-//         } else {
-//             Self(Cow::Borrowed(s))
-//         }
-//     }
-// }
-
-// FIXME remove once we switch from `roxmltree`
-impl<'s, 'input: 's> From<&'s roxmltree::StringStorage<'input>> for UnescapedStr<'input> {
-    fn from(value: &'s roxmltree::StringStorage<'input>) -> Self {
-        match value {
-            roxmltree::StringStorage::Borrowed(s) => Self(Cow::Borrowed(*s)),
-            roxmltree::StringStorage::Owned(s) => Self(Cow::Owned(String::from(&**s))),
+impl<'s> FromEscapedStr<'s> for UnescapedStr<'s> {
+    fn from_escaped_str(s: &'s str) -> Self {
+        if s.contains('&') {
+            // Self(Cow::Owned(
+            //     s.replace("&quot;", "\"")
+            //         .replace("&apos;", "'")
+            //         .replace("&lt;", "<")
+            //         .replace("&gt;", ">")
+            //         .replace("&amp;", "&"),
+            // ))
+            let mut unescaped = String::with_capacity(s.len());
+            for v in s.split('&') {
+                if let Some(v) = v.strip_prefix("quot;") {
+                    unescaped.push('"');
+                    unescaped.push_str(v)
+                } else if let Some(v) = v.strip_prefix("apos;") {
+                    unescaped.push('\'');
+                    unescaped.push_str(v)
+                } else if let Some(v) = v.strip_prefix("lt;") {
+                    unescaped.push('<');
+                    unescaped.push_str(v)
+                } else if let Some(v) = v.strip_prefix("gt;") {
+                    unescaped.push('>');
+                    unescaped.push_str(v)
+                } else if let Some(v) = v.strip_prefix("amp;") {
+                    unescaped.push('&');
+                    unescaped.push_str(v)
+                } else {
+                    unescaped.push_str(v)
+                }
+            }
+            Self(Cow::Owned(unescaped))
+        } else {
+            Self(Cow::Borrowed(s))
         }
     }
 }

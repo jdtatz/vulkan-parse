@@ -94,14 +94,15 @@ pub enum DynamicShapeKind<'a> {
 }
 
 impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for DynamicShapeKind<'a> {
-    fn from_attributes<'input: 'xml>(
-        node: roxmltree::Node<'xml, 'input>,
+    fn from_attributes(
+        attributes: &[crate::Attribute<'xml>],
+        location: crate::Location,
     ) -> ParseResult<Result<Self, &'static [&'static str]>> {
-        if let Some(len) = crate::try_from_attribute::<Option<&str>>(node, "len")? {
+        if let Some(len) = crate::try_from_attribute::<Option<&str>>(attributes, "len", location)? {
             Ok(Ok(
                 if let Some(latex_expr) = len.strip_prefix("latexmath:") {
                     // let c_expr = try_attribute(node, "altlen").transpose().expect("The `altlen` attribute is required when the `len` attribute is a latex expression");
-                    let c_expr = crate::try_from_attribute(node, "altlen")?;
+                    let c_expr = crate::try_from_attribute(attributes, "altlen", location)?;
                     DynamicShapeKind::Expression { latex_expr, c_expr }
                 } else if let Some((l1, l2)) = len.split_once(',') {
                     DynamicShapeKind::Double(l1.into(), l2.into())
@@ -841,11 +842,18 @@ impl<'a> ops::DerefMut for Member<'a> {
     }
 }
 
-impl<'a, 'de: 'a> crate::TryFromXML<'de> for IncludeType<'a> {
-    fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, 'xml: 'a> crate::TryFromXML<'xml> for IncludeType<'a> {
+    fn try_from_xml<I: Iterator<Item = ParseResult<crate::XMLChild<'xml>>>>(
+        _tag: &'xml str,
+        attributes: &[crate::Attribute<'xml>],
+        children: Option<I>,
+        location: crate::Location,
+    ) -> ParseResult<Option<Self>> {
+        let val: Option<&str> = crate::TryFromTextContent::try_from_text(children, location)?;
+        let is_local_include = val.map(|s| s.contains('"'));
         Ok(Some(IncludeType {
-            name: crate::try_from_attribute(node, "name")?,
-            is_local_include: node.text().map(|s| s.contains('"')),
+            name: crate::try_from_attribute(&attributes, "name", location)?,
+            is_local_include,
         }))
     }
 }
@@ -874,13 +882,20 @@ impl<'a> crate::IntoXMLElement for IncludeType<'a> {
     }
 }
 
-impl<'a, 'de: 'a> crate::TryFromXML<'de> for BitmaskType<'a> {
-    fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> ParseResult<Option<Self>> {
+impl<'a, 'xml: 'a> crate::TryFromXML<'xml> for BitmaskType<'a> {
+    fn try_from_xml<I: Iterator<Item = ParseResult<crate::XMLChild<'xml>>>>(
+        _tag: &'xml str,
+        attributes: &[crate::Attribute<'xml>],
+        children: Option<I>,
+        location: crate::Location,
+    ) -> ParseResult<Option<Self>> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
-            has_bitvalues: node.has_attribute("requires") || node.has_attribute("bitvalues"),
-            api: crate::try_from_attribute(node, "api")?,
-            ..TryFromTokens::try_from_node(node)?
+            has_bitvalues: attributes
+                .iter()
+                .any(|a| a.name.as_str() == "requires" || a.name.as_str() == "bitvalues"),
+            api: crate::try_from_attribute(&attributes, "api", location)?,
+            ..TryFromTokens::try_from_elements(&mut children.into_iter().flatten(), location)?
         }))
     }
 }

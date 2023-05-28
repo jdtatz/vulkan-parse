@@ -148,7 +148,7 @@ fn named_field_deserialization_guard(
     match (tag, discriminant) {
         (None, None) => None,
         (None, Some(VariantDiscriminantOpts { attr, value: None })) => {
-            Some(quote!(node.has_attribute(#attr)))
+            Some(quote!(attributes.iter().find(|a| a.name.as_str() == #attr).is_some()))
         }
         (
             None,
@@ -156,18 +156,22 @@ fn named_field_deserialization_guard(
                 attr,
                 value: Some(value),
             }),
-        ) => Some(quote!(let Some(#value) = node.attribute(#attr))),
-        (Some(tag), None) => Some(quote!(node.has_tag_name(#tag))),
-        (Some(tag), Some(VariantDiscriminantOpts { attr, value: None })) => {
-            Some(quote!(node.has_tag_name(#tag) && node.has_attribute(#attr)))
-        }
+        ) => Some(
+            quote!(attributes.iter().find(|a| a.name.as_str() == #attr && a.value.as_str() == #value).is_some()),
+        ),
+        (Some(tag), None) => Some(quote!(tag == #tag)),
+        (Some(tag), Some(VariantDiscriminantOpts { attr, value: None })) => Some(
+            quote!(tag == #tag && attributes.iter().find(|a| a.name.as_str() == #attr).is_some()),
+        ),
         (
             Some(tag),
             Some(VariantDiscriminantOpts {
                 attr,
                 value: Some(value),
             }),
-        ) => Some(quote!(node.has_tag_name(#tag) && matches!(node.attribute(#attr), Some(#value)))),
+        ) => Some(
+            quote!(tag == #tag && attributes.iter().find(|a| a.name.as_str() == #attr && a.value.as_str() == #value).is_some()),
+        ),
     }
 }
 
@@ -184,7 +188,7 @@ fn named_field_deserialization_impl(
     } = fields.try_into()?;
     let flattened_field = flattened.map(|name| {
         let name = name.unwrap();
-        quote! { #name: crate::TryFromXML::from_xml(node)?, }
+        quote! { #name: crate::TryFromXML::from_xml(tag, attributes, children, location)?, }
     });
     let attr_fields = attrs.iter().map(
         |(
@@ -198,16 +202,16 @@ fn named_field_deserialization_impl(
         )| {
             let name = name.unwrap();
             if flattened.is_present() {
-                return quote! { #name : crate::TryFromAttributes::try_from_attributes(node)? };
+                return quote! { #name : crate::TryFromAttributes::try_from_attributes(&attributes, location)? };
             }
             let attr_str = rename
                 .as_deref()
                 .map(ToTokens::to_token_stream)
                 .unwrap_or_else(|| quote! { stringify!(#name) });
             let v = if let Some(seperator) = seperator {
-                quote! { crate::try_from_interspersed_attr::<#seperator, _>(node, #attr_str)? }
+                quote! { crate::try_from_interspersed_attr::<#seperator, _>(&attributes, #attr_str, location)? }
             } else {
-                quote! { crate::try_from_attribute(node, #attr_str)? }
+                quote! { crate::try_from_attribute(&attributes, #attr_str, location)? }
             };
             if let Some(mapped) = mapped {
                 quote! { #name : #mapped::into(#v) }
@@ -218,7 +222,7 @@ fn named_field_deserialization_impl(
     );
     let text_field = text.map(|name| {
         let name = name.unwrap();
-        quote! { #name : crate::TryFromTextContent::try_from_text(node)?, }
+        quote! { #name : crate::TryFromTextContent::try_from_text(children, location)?, }
     });
     let child_idents: Vec<_> = children
         .iter()
@@ -232,7 +236,7 @@ fn named_field_deserialization_impl(
             Ok(Some(#struct_path {
                 #(#attr_fields,)*
                 #flattened_field
-                ..TryFromTokens::try_from_node(node)?
+                ..TryFromTokens::try_from_elements(&mut children.into_iter().flatten(), location)?
             }))
         })
     } else if child_idents.is_empty() {
@@ -246,9 +250,9 @@ fn named_field_deserialization_impl(
     } else {
         assert!(text_field.is_none());
         Ok(quote! {
-            let mut it = node.into();
-            #(let #child_idents = crate::TryFromXMLChildren::try_from_children(&mut it)?;)*
-            if let Some(n) = it.next() {
+            let mut it = itertools::put_back(children.into_iter().flatten());
+            #(let #child_idents = crate::TryFromXMLChildren::try_from_children(&mut it, location)?;)*
+            if let Some(n) = it.next().transpose()? {
                 return Err(crate::ErrorKind::NoMatch.with_location(&n))
             }
             Ok(Some(#struct_path {
@@ -442,11 +446,11 @@ impl XMLSerializationDeriveVariant {
         ) {
             (darling::ast::Style::Tuple, Some(guard), [_]) => Ok(quote! {
                 if #guard {
-                    Ok(Some(#variant_path(crate::TryFromXML::from_xml(node)?)))
+                    Ok(Some(#variant_path(crate::TryFromXML::from_xml(tag, attributes, children, location)?)))
                 }
             }),
             (darling::ast::Style::Tuple, None, [_]) => Ok(quote! {
-                if let Some(v) = crate::TryFromXML::try_from_xml(node)? {
+                if let Some(v) = crate::TryFromXML::try_from_xml(tag, attributes, children.as_mut(), location)? {
                     Ok(Some(#variant_path(v)))
                 }
             }),
@@ -587,9 +591,14 @@ fn enum_impl(
         if let Some(tag) = tag {
             return Ok(quote! {
                 impl #de_impl_generics crate::TryFromXML<'de> for #enum_ident #ty_generics #de_where_clause {
-                    fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
-                        if node.has_tag_name(#tag) {
-                            Ok(Some(crate::TryFromTokens::try_from_node(node)?))
+                    fn try_from_xml<I: Iterator<Item=crate::ParseResult<crate::XMLChild<'de>>>>(
+                        tag: &'de str,
+                        attributes: &[crate::Attribute<'de>],
+                        children: Option<I>,
+                        location: crate::Location,
+                    ) -> crate::ParseResult<Option<Self>> {
+                        if tag == #tag {
+                            Ok(Some(crate::TryFromTokens::try_from_elements(&mut children.into_iter().flatten(), location)?))
                         } else {
                             Ok(None)
                         }
@@ -625,8 +634,13 @@ fn enum_impl(
         // FIXME
         Ok(quote! {
             impl #de_impl_generics crate::TryFromXML<'de> for #enum_ident #ty_generics #de_where_clause {
-                fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
-                    if !node.has_tag_name(#tag) {
+                fn try_from_xml<I: Iterator<Item=crate::ParseResult<crate::XMLChild<'de>>>>(
+                    tag: &'de str,
+                    attributes: &[crate::Attribute<'de>],
+                    mut children: Option<I>,
+                    location: crate::Location,
+                ) -> crate::ParseResult<Option<Self>> {
+                    if tag != #tag {
                         Ok(None)
                     } else
                     #(
@@ -652,7 +666,12 @@ fn enum_impl(
     } else {
         Ok(quote! {
             impl #de_impl_generics crate::TryFromXML<'de> for #enum_ident #ty_generics #de_where_clause {
-                fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
+                fn try_from_xml<I: Iterator<Item=crate::ParseResult<crate::XMLChild<'de>>>>(
+                    tag: &'de str,
+                    attributes: &[crate::Attribute<'de>],
+                    mut children: Option<I>,
+                    location: crate::Location,
+                ) -> crate::ParseResult<Option<Self>> {
                     #(
                         #deser else
                     )*
@@ -710,7 +729,12 @@ fn struct_impl(
     };
     Ok(quote! {
         impl #de_impl_generics crate::TryFromXML<'de> for #struct_ident #ty_generics #de_where_clause {
-            fn try_from_xml<'input: 'de>(node: roxmltree::Node<'de, 'input>) -> crate::ParseResult<Option<Self>> {
+            fn try_from_xml<I: Iterator<Item=crate::ParseResult<crate::XMLChild<'de>>>>(
+                tag: &'de str,
+                attributes: &[crate::Attribute<'de>],
+                mut children: Option<I>,
+                location: crate::Location,
+            ) -> crate::ParseResult<Option<Self>> {
                 #deser_impl
             }
         }

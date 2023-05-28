@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::{
-    lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, DisplayEscaped, ErrorKind,
-    FieldLike, FieldLikeSizing, FnPtrType, HandleKind, HandleType, MacroDefine, MacroDefineValue,
-    ParseResult, PointerKind, Token, UnescapedStr,
+    lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, DisplayEscaped, FieldLike,
+    FieldLikeSizing, FnPtrType, FromEscapedStr, HandleKind, HandleType, MacroDefine,
+    MacroDefineValue, ParseResult, PointerKind, Token, UnescapedStr,
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -283,43 +283,47 @@ impl From<MemberAccess> for Token<'static> {
 // Only used for roundtrip
 impl fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.yield_tokens( |token| write!(f, "{token}"), false)
+        self.yield_tokens(&mut |token| write!(f, "{token}"), false)
     }
 }
 
 impl DisplayEscaped for Expression<'_> {
     fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.yield_tokens( |token| token.escaped_fmt(f), false)
+        self.yield_tokens(&mut |token| token.escaped_fmt(f), false)
     }
 }
 
 impl<'a> Expression<'a> {
-    pub fn yield_tokens<E, F: FnMut(Token<'a>) -> Result<(), E>>(&self, mut yield_token: F, is_inner: bool) -> Result<(), E> {
+    pub fn yield_tokens<E, F: FnMut(Token<'a>) -> Result<(), E>>(
+        &self,
+        yield_token: &mut F,
+        is_inner: bool,
+    ) -> Result<(), E> {
         match self {
             Expression::Identifier(id) => yield_token(Token::Identifier(id)),
             Expression::Constant(c) => yield_token(Token::Constant(*c)),
             Expression::Literal(lit) => yield_token(Token::Literal(lit)),
             Expression::SizeOf(_) => todo!(),
             Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
-                e.yield_tokens(&mut yield_token, is_inner)?;
+                e.yield_tokens(yield_token, is_inner)?;
                 yield_token(Token::Increment)
             }
             Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => {
-                e.yield_tokens(&mut yield_token, is_inner)?;
+                e.yield_tokens(yield_token, is_inner)?;
                 yield_token(Token::Decrement)
             }
             Expression::Unary(UnaryOp::Cast(ty), e) => todo!("({:?}){:?}", ty, e),
             Expression::Unary(op, e) => {
                 yield_token(op.clone().into())?;
-                e.yield_tokens(&mut yield_token, is_inner)
+                e.yield_tokens(yield_token, is_inner)
             }
             Expression::Binary(op, l, r) => {
                 if is_inner {
                     yield_token(Token::LParen)?;
                 }
-                l.yield_tokens(&mut yield_token, true)?;
+                l.yield_tokens(yield_token, true)?;
                 yield_token(op.clone().into())?;
-                r.yield_tokens(&mut yield_token, true)?;
+                r.yield_tokens(yield_token, true)?;
                 if is_inner {
                     yield_token(Token::RParen)?;
                 }
@@ -329,9 +333,9 @@ impl<'a> Expression<'a> {
                 if is_inner {
                     yield_token(Token::LParen)?;
                 }
-                l.yield_tokens(&mut yield_token, true)?;
+                l.yield_tokens(yield_token, true)?;
                 yield_token(op.clone().into())?;
-                r.yield_tokens(&mut yield_token, true)?;
+                r.yield_tokens(yield_token, true)?;
                 if is_inner {
                     yield_token(Token::RParen)?;
                 }
@@ -342,18 +346,18 @@ impl<'a> Expression<'a> {
                 if is_inner {
                     yield_token(Token::LParen)?;
                 }
-                cond.yield_tokens(&mut yield_token, true)?;
+                cond.yield_tokens(yield_token, true)?;
                 yield_token(Token::Question)?;
-                et.yield_tokens(&mut yield_token, true)?;
+                et.yield_tokens(yield_token, true)?;
                 yield_token(Token::Colon)?;
-                ef.yield_tokens(&mut yield_token, true)?;
+                ef.yield_tokens(yield_token, true)?;
                 if is_inner {
                     yield_token(Token::RParen)?;
                 }
                 Ok(())
             }
             Expression::FunctionCall(func, args) => {
-                func.yield_tokens(&mut yield_token, true)?;
+                func.yield_tokens(yield_token, true)?;
                 yield_token(Token::LParen)?;
                 let mut is_first = true;
                 for arg in args.iter() {
@@ -362,24 +366,24 @@ impl<'a> Expression<'a> {
                     } else {
                         yield_token(Token::Comma)?;
                     }
-                    arg.yield_tokens(&mut yield_token, false)?;
+                    arg.yield_tokens(yield_token, false)?;
                 }
                 yield_token(Token::RParen)
             }
             Expression::Comma(head, tail) => {
-                head.yield_tokens(&mut yield_token, true)?;
+                head.yield_tokens(yield_token, true)?;
                 yield_token(Token::Comma)?;
-                tail.yield_tokens(&mut yield_token, true)
+                tail.yield_tokens(yield_token, true)
             }
             Expression::Member(access, v, member) => {
-                v.yield_tokens(&mut yield_token, true)?;
+                v.yield_tokens(yield_token, true)?;
                 yield_token(access.clone().into())?;
                 yield_token(Token::Identifier(member))
             }
             Expression::ArrayElement(e, i) => {
-                e.yield_tokens(&mut yield_token, true)?;
+                e.yield_tokens(yield_token, true)?;
                 yield_token(Token::LBrack)?;
-                i.yield_tokens(&mut yield_token, true)?;
+                i.yield_tokens(yield_token, true)?;
                 yield_token(Token::RBrack)
             }
         }
@@ -424,6 +428,60 @@ impl<'a> FromIterator<Token<'a>> for VkXMLTokens<'a> {
     }
 }
 
+enum SimpleXMLToken<'xml> {
+    Text(&'xml str),
+    Elem { name: &'xml str, value: &'xml str },
+}
+
+struct SimpleXMLTokenIter<'i, I> {
+    it: &'i mut I,
+}
+
+impl<'i, 'xml: 'i, I: Iterator<Item = crate::ParseResult<crate::XMLChild<'xml>>>>
+    SimpleXMLTokenIter<'i, I>
+{
+    fn try_next(&mut self) -> crate::ParseResult<Option<SimpleXMLToken<'xml>>> {
+        Ok(match self.it.next().transpose()? {
+            None => None,
+            Some(crate::XMLChild::Text { text }) => Some(SimpleXMLToken::Text(text.as_str())),
+            Some(crate::XMLChild::EmptyElement { name, .. }) => Some(SimpleXMLToken::Elem {
+                name: name.as_str(),
+                value: "",
+            }),
+            Some(crate::XMLChild::StartElement { name, .. }) => {
+                let text = match self.it.next().transpose()? {
+                    Some(crate::XMLChild::Text { text }) => text,
+                    Some(crate::XMLChild::EndElement { .. }) => {
+                        return Ok(Some(SimpleXMLToken::Elem {
+                            name: name.as_str(),
+                            value: "",
+                        }));
+                    }
+                    _ => unreachable!(),
+                };
+                let Some(crate::XMLChild::EndElement { .. }) = self.it.next().transpose()? else {
+                    unreachable!()
+                };
+                Some(SimpleXMLToken::Elem {
+                    name: name.as_str(),
+                    value: text.as_str(),
+                })
+            }
+            _ => unreachable!(),
+        })
+    }
+}
+
+impl<'i, 'xml: 'i, I: Iterator<Item = crate::ParseResult<crate::XMLChild<'xml>>>> Iterator
+    for SimpleXMLTokenIter<'i, I>
+{
+    type Item = crate::ParseResult<SimpleXMLToken<'xml>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.try_next().transpose()
+    }
+}
+
 enum Either<L, R> {
     Left(L),
     Right(R),
@@ -440,27 +498,24 @@ impl<T, L: Iterator<Item = T>, R: Iterator<Item = T>> Iterator for Either<L, R> 
     }
 }
 
-fn vk_token_flat_map<'a, 'input: 'a>(
-    n: roxmltree::Node<'a, 'input>,
+fn vk_token_flat_map<'a>(
+    xtok: SimpleXMLToken<'a>,
     parsing_macros: bool,
     objc_compat: bool,
 ) -> impl IntoIterator<Item = ParseResult<VkXMLToken<'a>>> {
     // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
-    if n.is_element() {
-        let text = n
-            .text_storage()
-            .map(crate::UnescapedStr::from)
-            .unwrap_or_default();
-        Either::Left(iter::once(Ok(VkXMLToken::TextTag {
-            name: n.tag_name().name(),
-            text,
-        })))
-    } else {
-        let text = n.text().unwrap_or("");
-        Either::Right(tokenize(text, parsing_macros, objc_compat).map(move |r| {
-            r.map(VkXMLToken::C)
-                .map_err(|e| ErrorKind::LexerError(e).with_location(&n))
-        }))
+    match xtok {
+        SimpleXMLToken::Text(text) => {
+            Either::Right(tokenize(text, parsing_macros, objc_compat).map(move |r| {
+                r.map(VkXMLToken::C)
+                    // .map_err(|e| ErrorKind::LexerError(e).with_location(&n))
+                    .map_err(|e| todo!("{e:?}"))
+            }))
+        }
+        SimpleXMLToken::Elem { name, value } => Either::Left(iter::once(Ok(VkXMLToken::TextTag {
+            name,
+            text: UnescapedStr::from_escaped_str(value),
+        }))),
     }
 }
 
@@ -486,22 +541,21 @@ pub trait TryFromTokens<'a>: Sized {
     const OBJC_COMPAT: bool;
 
     fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError>;
-    fn try_from_elements<'input: 'a, I: IntoIterator<Item = roxmltree::Node<'a, 'input>>>(
-        elements: I,
+    fn try_from_elements<I: Iterator<Item = crate::ParseResult<crate::XMLChild<'a>>>>(
+        it: &mut I,
         parent_loc: crate::Location,
     ) -> ParseResult<Self> {
-        let tokens = elements
+        let tokens = SimpleXMLTokenIter { it }
             .into_iter()
-            .flat_map(|n| vk_token_flat_map(n, Self::PARSING_MACROS, Self::OBJC_COMPAT))
+            .flat_map(|r| match r {
+                Ok(t) => Either::Left(
+                    vk_token_flat_map(t, Self::PARSING_MACROS, Self::OBJC_COMPAT).into_iter(),
+                ),
+                Err(e) => Either::Right(iter::once(Err(e))),
+            })
             .collect::<ParseResult<_>>()?;
         Self::try_from_tokens(&tokens)
             .map_err(|e| crate::ErrorKind::PegParsingError(e).with_location(parent_loc))
-    }
-    fn try_from_node<'input: 'a>(node: roxmltree::Node<'a, 'input>) -> ParseResult<Self> {
-        Self::try_from_elements(
-            node.children().filter(|n| n.is_element() || n.is_text()),
-            (&node).into(),
-        )
     }
 }
 
@@ -858,10 +912,14 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ Token<'a> {
 
 impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ Expression<'a> {
     fn to_tokens(self, tokens: &mut Vec<VkXMLToken<'t>>) {
-        self.yield_tokens::<core::convert::Infallible, _>( move |token| {
-            tokens.push(VkXMLToken::from(token));
-            Ok(())
-        }, false).unwrap()
+        self.yield_tokens::<core::convert::Infallible, _>(
+            &mut move |token| {
+                tokens.push(VkXMLToken::from(token));
+                Ok(())
+            },
+            false,
+        )
+        .unwrap()
     }
 }
 

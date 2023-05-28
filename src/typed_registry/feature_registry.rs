@@ -194,21 +194,22 @@ pub enum RequireValueEnum<'a> {
 }
 
 impl<'a, 'xml: 'a> crate::FromAttributes<'xml> for RequireValueEnum<'a> {
-    fn from_attributes<'input: 'xml>(
-        node: roxmltree::Node<'xml, 'input>,
+    fn from_attributes(
+        attributes: &[crate::Attribute<'xml>],
+        location: crate::Location,
     ) -> ParseResult<Result<Self, &'static [&'static str]>> {
-        if let Some(value) = crate::try_from_attribute(node, "value")? {
+        if let Some(value) = crate::try_from_attribute(attributes, "value", location)? {
             Ok(Ok(RequireValueEnum::Value(value)))
-        } else if let Some(alias) = crate::try_from_attribute(node, "alias")? {
+        } else if let Some(alias) = crate::try_from_attribute(attributes, "alias", location)? {
             Ok(Ok(RequireValueEnum::Alias(alias)))
-        } else if let Some(offset) = crate::try_from_attribute(node, "offset")? {
+        } else if let Some(offset) = crate::try_from_attribute(attributes, "offset", location)? {
             Ok(Ok(RequireValueEnum::Offset {
                 // extnumber: attribute(node, "extnumber")?,
-                extnumber: crate::try_from_attribute(node, "extnumber")?,
+                extnumber: crate::try_from_attribute(attributes, "extnumber", location)?,
                 offset,
-                direction: crate::try_from_attribute(node, "dir")?,
+                direction: crate::try_from_attribute(attributes, "dir", location)?,
             }))
-        } else if let Some(bitpos) = crate::try_from_attribute(node, "bitpos")? {
+        } else if let Some(bitpos) = crate::try_from_attribute(attributes, "bitpos", location)? {
             Ok(Ok(RequireValueEnum::Bitpos(bitpos)))
         } else {
             Ok(Err(&["value", "alias", "offset", "bitpos"]))

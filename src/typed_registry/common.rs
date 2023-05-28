@@ -76,10 +76,11 @@ impl<'xml, T> crate::TryFromXMLChildren<'xml> for CommentendChildren<'xml, T>
 where
     Vec<MaybeComment<'xml, T>>: crate::TryFromXMLChildren<'xml>,
 {
-    fn try_from_children<'input: 'xml>(
-        it: &mut crate::PeekableChildrenElements<'xml, 'input>,
+    fn try_from_children<I: Iterator<Item = ParseResult<crate::XMLChild<'xml>>>>(
+        it: &mut itertools::PutBack<I>,
+        parent_loc: crate::Location,
     ) -> ParseResult<Self> {
-        Vec::try_from_children(it).map(Self)
+        Vec::try_from_children(it, parent_loc).map(Self)
     }
 }
 

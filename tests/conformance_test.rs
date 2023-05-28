@@ -1,13 +1,12 @@
 use std::{collections::HashSet, fs, io::Cursor};
 
-use roxmltree::Node;
-use vulkan_parse::{parse_registry, roundtrip::into_xml, tokenize, Document, Expression};
+use roxmltree::{Document, Node};
+use vulkan_parse::{parse_registry, roundtrip::into_xml, tokenize, Expression};
 
 #[test]
 fn test_vk_xml_conformance() {
     let xml = fs::read_to_string("Vulkan-Docs/xml/vk.xml").unwrap();
-    let doc = Document::parse(&xml).unwrap();
-    let registry = match parse_registry(&doc) {
+    let registry = match parse_registry(&xml) {
         Ok(reg) => reg,
         Err(e) => panic!("{}", e),
     };
@@ -21,8 +20,7 @@ fn test_vk_xml_conformance() {
 #[test]
 fn test_video_xml_conformance() {
     let xml = fs::read_to_string("Vulkan-Docs/xml/video.xml").unwrap();
-    let doc = Document::parse(&xml).unwrap();
-    let registry = match parse_registry(&doc) {
+    let registry = match parse_registry(&xml) {
         Ok(reg) => reg,
         Err(e) => panic!("{}", e),
     };

@@ -377,8 +377,8 @@ pub enum Token<'a> {
     #[regex(r#"[0-9]+(?&exp)(?&float_suffix)?"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
     #[regex(r#"[0-9]+(?&exp)?[fF]"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
     Constant(Constant),
-    // &quot;
-    #[regex(r#"L?&quot;([^\\]|\\t|\\u|\\n)*&quot;"#, |lex| fix_escaped_literal(lex.slice()))]
+    // FIXME ASAP
+    #[regex(r#"L?&quot;([^&\\]|\\t|\\u|\\n)*&quot;"#, |lex| fix_escaped_literal(lex.slice()))]
     #[regex(r#"L?"([^"\\]|\\t|\\u|\\n|\\")*""#, |lex| fix_literal(lex.slice()))]
     Literal(&'a str),
 }
@@ -669,5 +669,19 @@ mod tests {
     fn test_float_constants() {
         let tokens = Token::lexer("1000.0F").into_iter().collect::<Vec<_>>();
         assert_eq!(tokens, &[Token::Constant(Constant::Float(1000.0))]);
+    }
+    #[test]
+    fn test_literal() {
+        let tokens = Token::lexer("\"VK_KHR_surface\"")
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(tokens, &[Token::Literal("VK_KHR_surface")]);
+    }
+    #[test]
+    fn test_escaped_literal() {
+        let tokens = Token::lexer("&quot;VK_KHR_surface&quot;")
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(tokens, &[Token::Literal("VK_KHR_surface")]);
     }
 }
