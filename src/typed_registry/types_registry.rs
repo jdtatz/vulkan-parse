@@ -675,13 +675,6 @@ pub enum HandleKind {
     NoDispatch,
 }
 
-// FIXME Remove ASAP
-impl<'a> Into<UnescapedStr<'a>> for HandleKind {
-    fn into(self) -> UnescapedStr<'a> {
-        UnescapedStr(Cow::Borrowed(self.into()))
-    }
-}
-
 /// <type category="enum">
 #[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]

@@ -283,111 +283,104 @@ impl From<MemberAccess> for Token<'static> {
 // Only used for roundtrip
 impl fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut tokens = Vec::new();
-        self.yield_tokens(&mut tokens, false);
-        for token in tokens {
-            write!(f, "{token}")?;
-        }
-        Ok(())
+        self.yield_tokens( |token| write!(f, "{token}"), false)
     }
 }
 
 impl DisplayEscaped for Expression<'_> {
     fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut tokens = Vec::new();
-        self.yield_tokens(&mut tokens, false);
-        for token in tokens {
-            token.escaped_fmt(f)?;
-        }
-        Ok(())
+        self.yield_tokens( |token| token.escaped_fmt(f), false)
     }
 }
 
 impl<'a> Expression<'a> {
-    pub fn yield_tokens(&self, tokens: &mut Vec<Token<'a>>, is_inner: bool) {
+    pub fn yield_tokens<E, F: FnMut(Token<'a>) -> Result<(), E>>(&self, mut yield_token: F, is_inner: bool) -> Result<(), E> {
         match self {
-            Expression::Identifier(id) => tokens.push(Token::Identifier(id)),
-            Expression::Constant(c) => tokens.push(Token::Constant(*c)),
-            Expression::Literal(lit) => tokens.push(Token::Literal(lit)),
+            Expression::Identifier(id) => yield_token(Token::Identifier(id)),
+            Expression::Constant(c) => yield_token(Token::Constant(*c)),
+            Expression::Literal(lit) => yield_token(Token::Literal(lit)),
             Expression::SizeOf(_) => todo!(),
             Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
-                e.yield_tokens(tokens, is_inner);
-                tokens.push(Token::Increment);
+                e.yield_tokens(&mut yield_token, is_inner)?;
+                yield_token(Token::Increment)
             }
             Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => {
-                e.yield_tokens(tokens, is_inner);
-                tokens.push(Token::Decrement);
+                e.yield_tokens(&mut yield_token, is_inner)?;
+                yield_token(Token::Decrement)
             }
             Expression::Unary(UnaryOp::Cast(ty), e) => todo!("({:?}){:?}", ty, e),
             Expression::Unary(op, e) => {
-                tokens.push(op.clone().into());
-                e.yield_tokens(tokens, is_inner);
+                yield_token(op.clone().into())?;
+                e.yield_tokens(&mut yield_token, is_inner)
             }
             Expression::Binary(op, l, r) => {
                 if is_inner {
-                    tokens.push(Token::LParen);
+                    yield_token(Token::LParen)?;
                 }
-                l.yield_tokens(tokens, true);
-                tokens.push(op.clone().into());
-                r.yield_tokens(tokens, true);
+                l.yield_tokens(&mut yield_token, true)?;
+                yield_token(op.clone().into())?;
+                r.yield_tokens(&mut yield_token, true)?;
                 if is_inner {
-                    tokens.push(Token::RParen);
+                    yield_token(Token::RParen)?;
                 }
+                Ok(())
             }
             Expression::Comparision(op, l, r) => {
                 if is_inner {
-                    tokens.push(Token::LParen);
+                    yield_token(Token::LParen)?;
                 }
-                l.yield_tokens(tokens, true);
-                tokens.push(op.clone().into());
-                r.yield_tokens(tokens, true);
+                l.yield_tokens(&mut yield_token, true)?;
+                yield_token(op.clone().into())?;
+                r.yield_tokens(&mut yield_token, true)?;
                 if is_inner {
-                    tokens.push(Token::RParen);
+                    yield_token(Token::RParen)?;
                 }
+                Ok(())
             }
             Expression::Assignment(_, _, _) => todo!(),
             Expression::TernaryIfElse(cond, et, ef) => {
                 if is_inner {
-                    tokens.push(Token::LParen);
+                    yield_token(Token::LParen)?;
                 }
-                cond.yield_tokens(tokens, true);
-                tokens.push(Token::Question);
-                et.yield_tokens(tokens, true);
-                tokens.push(Token::Colon);
-                ef.yield_tokens(tokens, true);
+                cond.yield_tokens(&mut yield_token, true)?;
+                yield_token(Token::Question)?;
+                et.yield_tokens(&mut yield_token, true)?;
+                yield_token(Token::Colon)?;
+                ef.yield_tokens(&mut yield_token, true)?;
                 if is_inner {
-                    tokens.push(Token::RParen);
+                    yield_token(Token::RParen)?;
                 }
+                Ok(())
             }
             Expression::FunctionCall(func, args) => {
-                func.yield_tokens(tokens, true);
-                tokens.push(Token::LParen);
+                func.yield_tokens(&mut yield_token, true)?;
+                yield_token(Token::LParen)?;
                 let mut is_first = true;
                 for arg in args.iter() {
                     if is_first {
                         is_first = false;
                     } else {
-                        tokens.push(Token::Comma);
+                        yield_token(Token::Comma)?;
                     }
-                    arg.yield_tokens(tokens, false);
+                    arg.yield_tokens(&mut yield_token, false)?;
                 }
-                tokens.push(Token::RParen);
+                yield_token(Token::RParen)
             }
             Expression::Comma(head, tail) => {
-                head.yield_tokens(tokens, true);
-                tokens.push(Token::Comma);
-                tail.yield_tokens(tokens, true);
+                head.yield_tokens(&mut yield_token, true)?;
+                yield_token(Token::Comma)?;
+                tail.yield_tokens(&mut yield_token, true)
             }
             Expression::Member(access, v, member) => {
-                v.yield_tokens(tokens, true);
-                tokens.push(access.clone().into());
-                tokens.push(Token::Identifier(member));
+                v.yield_tokens(&mut yield_token, true)?;
+                yield_token(access.clone().into())?;
+                yield_token(Token::Identifier(member))
             }
             Expression::ArrayElement(e, i) => {
-                e.yield_tokens(tokens, true);
-                tokens.push(Token::LBrack);
-                i.yield_tokens(tokens, true);
-                tokens.push(Token::RBrack);
+                e.yield_tokens(&mut yield_token, true)?;
+                yield_token(Token::LBrack)?;
+                i.yield_tokens(&mut yield_token, true)?;
+                yield_token(Token::RBrack)
             }
         }
     }
@@ -865,9 +858,10 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ Token<'a> {
 
 impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ Expression<'a> {
     fn to_tokens(self, tokens: &mut Vec<VkXMLToken<'t>>) {
-        let mut expr_tokens = Vec::new();
-        self.yield_tokens(&mut expr_tokens, false);
-        tokens.extend(expr_tokens.into_iter().map(VkXMLToken::from));
+        self.yield_tokens::<core::convert::Infallible, _>( move |token| {
+            tokens.push(VkXMLToken::from(token));
+            Ok(())
+        }, false).unwrap()
     }
 }
 
@@ -1092,7 +1086,7 @@ impl<'a, 'xml: 'a> TryFromTokens<'xml> for HandleType<'a> {
 
 impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ HandleType<'a> {
     fn to_tokens(self, tokens: &mut Vec<VkXMLToken<'t>>) {
-        into_vkxml_tokens!(@tokens type = self.handle_kind, "(", name = self.name, ")");
+        into_vkxml_tokens!(@tokens type = <&'static str>::from(self.handle_kind), "(", name = self.name, ")");
     }
 }
 
