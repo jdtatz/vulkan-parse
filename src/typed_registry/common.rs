@@ -118,7 +118,7 @@ pub struct Alias<'a> {
     #[vkxml(attribute)]
     pub deprecated: Option<AliasDeprecationKind>,
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]

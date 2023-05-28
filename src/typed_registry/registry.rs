@@ -8,6 +8,7 @@ use super::{
     spirv_registry::{SpirvCapability, SpirvExtension},
     types_registry::Type,
 };
+use crate::UnescapedStr;
 
 #[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -25,21 +26,21 @@ pub enum Items<'a> {
         #[vkxml(child)]
         platforms: Vec<Platform<'a>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     #[vkxml(tag = "tags")]
     Tags {
         #[vkxml(child)]
         tags: Vec<Tag<'a>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     #[vkxml(tag = "types")]
     Types {
         #[vkxml(child)]
         types: CommentendChildren<'a, Type<'a>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     Enums(Enums<'a>),
     #[vkxml(tag = "commands")]
@@ -47,7 +48,7 @@ pub enum Items<'a> {
         #[vkxml(child)]
         commands: CommentendChildren<'a, DefinitionOrAlias<'a, Command<'a>>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     Features(Feature<'a>),
     #[vkxml(tag = "extensions")]
@@ -55,7 +56,7 @@ pub enum Items<'a> {
         #[vkxml(child)]
         extensions: Vec<WrappedExtension<'a>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     #[vkxml(tag = "formats")]
     Formats {
@@ -67,14 +68,14 @@ pub enum Items<'a> {
         #[vkxml(child)]
         extensions: Vec<SpirvExtension<'a>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     #[vkxml(tag = "spirvcapabilities")]
     SpirvCapabilities {
         #[vkxml(child)]
         capabilities: Vec<SpirvCapability<'a>>,
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
 }
 
@@ -90,7 +91,7 @@ pub struct Platform<'a> {
     pub protect: &'a str,
     /// platform description
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]

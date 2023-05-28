@@ -1,7 +1,7 @@
 use core::fmt;
 
 use super::common::{AliasDeprecationKind, CommentendChildren, SemVarVersion};
-use crate::{Expression, ParseResult, StdVersion, XMLElementBuilder};
+use crate::{Expression, ParseResult, StdVersion, UnescapedStr, XMLElementBuilder};
 
 #[enumflags2::bitflags]
 #[repr(u8)]
@@ -61,7 +61,7 @@ pub struct Feature<'a> {
     pub number: SemVarVersion,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     /// features to require/remove in this version
     #[vkxml(child)]
     pub children: Vec<FeatureChild<'a>>,
@@ -82,7 +82,7 @@ pub enum FeatureChild<'a> {
 pub struct Require<'a> {
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     /// API feature name
     #[vkxml(attribute)]
     pub feature: Option<StdVersion>,
@@ -100,7 +100,7 @@ pub struct Require<'a> {
 pub struct Remove<'a> {
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     /// API feature name
     #[vkxml(attribute)]
     pub feature: Option<StdVersion>,
@@ -121,7 +121,7 @@ pub enum RequireValue<'a> {
         name: &'a str,
         /// descriptive text with no semantic meaning
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     #[vkxml(tag = "command")]
     Command {
@@ -129,7 +129,7 @@ pub enum RequireValue<'a> {
         name: &'a str,
         /// descriptive text with no semantic meaning
         #[vkxml(attribute)]
-        comment: Option<&'a str>,
+        comment: Option<UnescapedStr<'a>>,
     },
     Enum(RequireEnum<'a>),
 }
@@ -155,7 +155,7 @@ pub struct RequireEnum<'a> {
     pub deprecated: Option<AliasDeprecationKind>,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 #[derive(

@@ -513,7 +513,7 @@ pub struct GuardedDefine<'a> {
     pub name: &'a str,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     /// name of another type definition required by this one
     #[vkxml(attribute)]
     pub requires: Option<&'a str>,
@@ -532,7 +532,7 @@ pub struct MacroDefine<'a> {
     pub name: &'a str,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     /// name of another type or macro definition required by this one
     #[vkxml(attribute)]
     pub requires: Option<&'a str>,
@@ -724,7 +724,7 @@ pub struct StructType<'a> {
     pub requires: Option<&'a str>,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 /// <type category="union">
@@ -742,7 +742,7 @@ pub struct UnionType<'a> {
     pub returned_only: Option<bool>,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 #[derive(

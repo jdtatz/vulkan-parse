@@ -1,6 +1,7 @@
 use core::{fmt, ops};
 
 use super::{FieldLike, VulkanApi};
+use crate::UnescapedStr;
 
 /// Structured definition of a single API command (function)
 #[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]
@@ -42,7 +43,7 @@ pub struct Command<'a> {
     pub api: Option<VulkanApi>,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 /// C function prototype of a command, up to the function name and return type but not including function parameters

@@ -5,7 +5,7 @@ use super::{
     common::StdVersion,
     feature_registry::{Require, VulkanApi},
 };
-use crate::VulkanDependencies;
+use crate::{UnescapedStr, VulkanDependencies};
 
 #[derive(
     Debug,
@@ -141,7 +141,7 @@ pub struct Extension<'a> {
     pub special_use: Option<Vec<&'a str>>,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     #[vkxml(child)]
     pub requires: Vec<Require<'a>>,
 }
@@ -158,7 +158,7 @@ pub struct PseudoExtension<'a> {
     pub supported: ExtensionSupport,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
     #[vkxml(child)]
     pub requires: Vec<Require<'a>>,
 }

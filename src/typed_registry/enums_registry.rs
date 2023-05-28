@@ -138,7 +138,7 @@ pub struct UnusedEnum<'a> {
     pub start: i64,
     /// descriptive text with no semantic meaning
     #[vkxml(attribute)]
-    pub comment: Option<&'a str>,
+    pub comment: Option<UnescapedStr<'a>>,
 }
 
 #[derive(Debug, Clone, Copy, TryFromEscapedStr, DisplayEscaped)]
