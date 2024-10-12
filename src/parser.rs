@@ -283,13 +283,13 @@ impl From<MemberAccess> for Token<'static> {
 // Only used for roundtrip
 impl fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.yield_tokens(&mut |token| write!(f, "{token}"), false)
+        self.yield_tokens(&mut |token| write!(f, "{token}"), false, false)
     }
 }
 
 impl DisplayEscaped for Expression<'_> {
     fn escaped_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.yield_tokens(&mut |token| token.escaped_fmt(f), false)
+        self.yield_tokens(&mut |token| token.escaped_fmt(f), false, false)
     }
 }
 
@@ -298,6 +298,7 @@ impl<'a> Expression<'a> {
         &self,
         yield_token: &mut F,
         is_inner: bool,
+        pretty: bool,
     ) -> Result<(), E> {
         match self {
             Expression::Identifier(id) => yield_token(Token::Identifier(id)),
@@ -305,25 +306,31 @@ impl<'a> Expression<'a> {
             Expression::Literal(lit) => yield_token(Token::Literal(lit)),
             Expression::SizeOf(_) => todo!(),
             Expression::Unary(UnaryOp::Increment(FixOrder::Postfix), e) => {
-                e.yield_tokens(yield_token, is_inner)?;
+                e.yield_tokens(yield_token, is_inner, pretty)?;
                 yield_token(Token::Increment)
             }
             Expression::Unary(UnaryOp::Decrement(FixOrder::Postfix), e) => {
-                e.yield_tokens(yield_token, is_inner)?;
+                e.yield_tokens(yield_token, is_inner, pretty)?;
                 yield_token(Token::Decrement)
             }
             Expression::Unary(UnaryOp::Cast(ty), e) => todo!("({:?}){:?}", ty, e),
             Expression::Unary(op, e) => {
                 yield_token(op.clone().into())?;
-                e.yield_tokens(yield_token, is_inner)
+                e.yield_tokens(yield_token, is_inner, pretty)
             }
             Expression::Binary(op, l, r) => {
                 if is_inner {
                     yield_token(Token::LParen)?;
                 }
-                l.yield_tokens(yield_token, true)?;
+                l.yield_tokens(yield_token, true, pretty)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
                 yield_token(op.clone().into())?;
-                r.yield_tokens(yield_token, true)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
+                r.yield_tokens(yield_token, true, pretty)?;
                 if is_inner {
                     yield_token(Token::RParen)?;
                 }
@@ -333,9 +340,15 @@ impl<'a> Expression<'a> {
                 if is_inner {
                     yield_token(Token::LParen)?;
                 }
-                l.yield_tokens(yield_token, true)?;
+                l.yield_tokens(yield_token, true, pretty)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
                 yield_token(op.clone().into())?;
-                r.yield_tokens(yield_token, true)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
+                r.yield_tokens(yield_token, true, pretty)?;
                 if is_inner {
                     yield_token(Token::RParen)?;
                 }
@@ -346,44 +359,62 @@ impl<'a> Expression<'a> {
                 if is_inner {
                     yield_token(Token::LParen)?;
                 }
-                cond.yield_tokens(yield_token, true)?;
+                cond.yield_tokens(yield_token, true, pretty)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
                 yield_token(Token::Question)?;
-                et.yield_tokens(yield_token, true)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
+                et.yield_tokens(yield_token, true, pretty)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
                 yield_token(Token::Colon)?;
-                ef.yield_tokens(yield_token, true)?;
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
+                ef.yield_tokens(yield_token, true, pretty)?;
                 if is_inner {
                     yield_token(Token::RParen)?;
                 }
                 Ok(())
             }
             Expression::FunctionCall(func, args) => {
-                func.yield_tokens(yield_token, true)?;
+                func.yield_tokens(yield_token, true, pretty)?;
                 yield_token(Token::LParen)?;
                 let mut is_first = true;
                 for arg in args.iter() {
                     if is_first {
                         is_first = false;
                     } else {
+                        if pretty {
+                            yield_token(Token::Whitespace)?;
+                        }
                         yield_token(Token::Comma)?;
                     }
-                    arg.yield_tokens(yield_token, false)?;
+                    arg.yield_tokens(yield_token, false, pretty)?;
                 }
                 yield_token(Token::RParen)
             }
             Expression::Comma(head, tail) => {
-                head.yield_tokens(yield_token, true)?;
+                head.yield_tokens(yield_token, true, pretty)?;
                 yield_token(Token::Comma)?;
-                tail.yield_tokens(yield_token, true)
+                if pretty {
+                    yield_token(Token::Whitespace)?;
+                }
+                tail.yield_tokens(yield_token, true, pretty)
             }
             Expression::Member(access, v, member) => {
-                v.yield_tokens(yield_token, true)?;
+                v.yield_tokens(yield_token, true, pretty)?;
                 yield_token(access.clone().into())?;
                 yield_token(Token::Identifier(member))
             }
             Expression::ArrayElement(e, i) => {
-                e.yield_tokens(yield_token, true)?;
+                e.yield_tokens(yield_token, true, pretty)?;
                 yield_token(Token::LBrack)?;
-                i.yield_tokens(yield_token, true)?;
+                i.yield_tokens(yield_token, true, pretty)?;
                 yield_token(Token::RBrack)
             }
         }
@@ -506,7 +537,7 @@ fn vk_token_flat_map<'a>(
     // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
     match xtok {
         SimpleXMLToken::Text(text) => {
-            Either::Right(tokenize(text, parsing_macros, objc_compat).map(move |r| {
+            Either::Right(tokenize(text, parsing_macros, objc_compat, false).map(move |r| {
                 r.map(VkXMLToken::C)
                     // .map_err(|e| ErrorKind::LexerError(e).with_location(&n))
                     .map_err(|e| todo!("{e:?}"))
@@ -863,7 +894,7 @@ impl<'a, 'de: 'a> TryFrom<&'de str> for Expression<'a> {
     type Error = TextError;
 
     fn try_from(value: &'de str) -> Result<Self, Self::Error> {
-        let c_toks = tokenize(value, false, false)
+        let c_toks = tokenize(value, false, false, false)
             .collect::<Result<_, _>>()
             .map_err(TextError::Lexer)?;
         c_with_vk_ext::expr(&c_toks).map_err(TextError::Parser)
@@ -920,6 +951,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ Expression<'a> {
                 Ok(())
             },
             false,
+            false,
         )
         .unwrap()
     }
@@ -933,10 +965,10 @@ macro_rules! into_vkxml_tokens {
             $(into_vkxml_tokens!(@ $tokens $($tail)*))?
         }
     };
-    (@ $tokens:ident $l:literal if $e:expr $(, $($tail:tt)*)?) => {
+    (@ $tokens:ident [$($tr:tt)*] if $e:expr $(, $($tail:tt)*)?) => {
         {
             if $e {
-                $tokens.push(VkXMLToken::C(Token::from_literal($l).unwrap()));
+                into_vkxml_tokens!(@ $tokens $($tr)* );
             }
             $(into_vkxml_tokens!(@ $tokens $($tail)*))?
         }
@@ -960,7 +992,7 @@ macro_rules! into_vkxml_tokens {
             $(into_vkxml_tokens!(@ $tokens $($tail)*))?
         }
     };
-    (@ $tokens:ident [$tks:expr] # $sep:literal $(, $($tail:tt)*)?) => {
+    (@ $tokens:ident [$tks:expr] # [$($sep:tt)*] $(, $($tail:tt)*)?) => {
         {
             {
                 let mut is_first = true;
@@ -968,7 +1000,7 @@ macro_rules! into_vkxml_tokens {
                     if is_first {
                         is_first = false;
                     } else {
-                        $tokens.push(VkXMLToken::C(Token::from_literal($sep).unwrap()));
+                        into_vkxml_tokens!(@ $tokens $($sep)* );
                     }
                     v.to_tokens($tokens);
                 }
@@ -988,7 +1020,7 @@ impl<'t> IntoVkXMLTokens<'t> for &'_ PointerKind {
     fn to_tokens(self, tokens: &mut Vec<VkXMLToken<'t>>) {
         into_vkxml_tokens!(@tokens match self => {
             PointerKind::Single => ["*"],
-            PointerKind::Double { inner_is_const } => ["*", "const" if *inner_is_const, "*"]
+            PointerKind::Double { inner_is_const } => ["*", ["const"] if *inner_is_const, "*"]
         });
     }
 }
@@ -1001,14 +1033,15 @@ impl<'t, 's, 'a: 't + 's, const NAME_IS_TAG: bool> IntoVkXMLTokens<'t>
     fn to_tokens(self, tokens: &mut Vec<VkXMLToken<'t>>) {
         let field = self.0;
         into_vkxml_tokens!(@tokens
-            "const" if field.is_const,
-            "struct" if matches!(field.type_name, TypeSpecifier::Struct(_)),
+            ["const", " "] if field.is_const,
+            ["struct", " "] if matches!(field.type_name, TypeSpecifier::Struct(_)),
             // FIXME: Workaround because it should be `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;` not `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
             match field.type_name.as_identifier() => {
                 "__IOSurface" => [Token::Identifier("__IOSurface")],
                 name => [type = name],
             },
             field.pointer_kind.as_ref(),
+            " ",
             match NAME_IS_TAG => {
                 true => [name = field.name],
                 false => [Token::Identifier(field.name)]
@@ -1070,8 +1103,8 @@ impl<'a, 'xml: 'a> TryFromTokens<'xml> for BaseTypeType<'a> {
 impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ BaseTypeType<'a> {
     fn to_tokens(self, tokens: &mut Vec<VkXMLToken<'t>>) {
         into_vkxml_tokens!(@tokens match self => {
-            BaseTypeType::Forward(name) => ["struct", name = *name, ";"],
-            BaseTypeType::TypeDef(typedef) => ["typedef", TypedTag::<true>(typedef), ";"],
+            BaseTypeType::Forward(name) => ["struct", " ", name = *name, ";"],
+            BaseTypeType::TypeDef(typedef) => ["typedef", " ", TypedTag::<true>(typedef), ";"],
             BaseTypeType::DefineGuarded { pre, name, post } => [pre, name = *name, post]
         });
     }
@@ -1097,14 +1130,15 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ MacroDefine<'a> {
                 true => [Token::_MalformedDefine],
                 false => ["#", Token::Identifier("define")],
             },
+            " ",
             name = self.name,
             match &self.value => {
-                MacroDefineValue::Expression(expr) => [expr],
-                MacroDefineValue::FunctionDefine { params, expression } => ["(", [params.iter().copied().map(Token::Identifier)] # ",", ")", " ", expression],
+                MacroDefineValue::Expression(expr) => [" ", expr],
+                MacroDefineValue::FunctionDefine { params, expression } => ["(", [params.iter().copied().map(Token::Identifier)] # [",", " "], ")", " ", expression],
                 MacroDefineValue::MacroFunctionCall {
                     name: fn_name,
                     args,
-                } => [" ", type = *fn_name, "(", [args] # ",", ")"]
+                } => [" ", type = *fn_name, "(", [args] # [",", " "], ")"]
             }
         );
     }
@@ -1125,14 +1159,16 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FnPtrType<'a> {
             "typedef",
             Token::Identifier(self.return_type_name.as_identifier()),
             self.return_type_pointer_kind.as_ref(),
+            " ",
             "(",
             Token::Identifier("VKAPI_PTR"),
+            " ",
             "*",
             name = self.name,
             ")",
             "(",
             match self.params.as_deref() => {
-                Some(params) => [[params.iter().map(TypedTag::<false>)] # ","],
+                Some(params) => [[params.iter().map(TypedTag::<false>)] # [",", " "]],
                 None => ["void"]
             },
             ")",

@@ -46,9 +46,10 @@ where
 }
 
 #[must_use]
-pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool) -> ResultIter<'_, Token> {
+pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool, keep_everything: bool) -> ResultIter<'_, Token> {
     let extras = TokenExtras {
-        keep_new_lines: parsing_macros,
+        keep_new_lines: parsing_macros || keep_everything,
+        keep_whitespace: keep_everything,
         objc_compat,
     };
     ResultIter::from(Lexer::with_extras(src, extras))
@@ -182,12 +183,21 @@ fn fix_escaped_literal(lit: &str) -> &str {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TokenExtras {
     pub keep_new_lines: bool,
+    pub keep_whitespace: bool,
     pub objc_compat: bool,
 }
 
 impl TokenExtras {
     fn new_line_filter(self) -> logos::Filter<()> {
         if self.keep_new_lines {
+            logos::Filter::Emit(())
+        } else {
+            logos::Filter::Skip
+        }
+    }
+
+    fn whitespace_filter(self) -> logos::Filter<()> {
+        if self.keep_whitespace {
             logos::Filter::Emit(())
         } else {
             logos::Filter::Skip
@@ -407,7 +417,7 @@ pub enum Token<'a> {
     //
     #[regex(r"\n", |lex| lex.extras.new_line_filter())]
     NewLine,
-    #[regex(r"[ \t\r\f]+", logos::skip)]
+    #[regex(r"[ \t\r\f]+", |lex| lex.extras.whitespace_filter())]
     Whitespace,
 
     // pre-processing tokens
@@ -418,13 +428,13 @@ pub enum Token<'a> {
     #[doc(hidden)]
     #[regex(r"// DEPRECATED:[^\n]*", |lex| lex.extras.deprecation_comment(lex.slice()))]
     _DeprecationComment(&'a str),
-    #[regex(r"//[^\n]*", logos::skip)]
+    #[regex(r"//[^\n]*", |lex| lex.extras.whitespace_filter())]
     Comment,
     #[token("#")]
     Pound,
     #[token("##")]
     DoublePound,
-    #[regex(r"\\[ \t\r\f]*\n", logos::skip)]
+    #[regex(r"\\[ \t\r\f]*\n", |lex| lex.extras.whitespace_filter())]
     BackSlash,
 
     #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |lex| lex.slice())]

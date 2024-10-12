@@ -78,10 +78,10 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
             let std_txt = s.text().unwrap();
             let rt_txt = r.text().unwrap();
             if std_txt != rt_txt {
-                let std_toks = tokenize(std_txt, false, true)
+                let std_toks = tokenize(std_txt, false, true, false)
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
-                let rt_toks: Vec<_> = tokenize(rt_txt, false, true)
+                let rt_toks: Vec<_> = tokenize(rt_txt, false, true, false)
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
                 assert_eq!(
