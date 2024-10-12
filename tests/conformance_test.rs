@@ -72,10 +72,6 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
                             "{path}:{}",
                             standard_doc.text_pos_at(s.range().start)
                         );
-                    } else if let Some(s_ver) = attr.value().strip_prefix("VK_API_VERSION_") {
-                        // # VK_VERSION_* are the guard macros and VK_API_VERSION_* are the version number macros
-                        // # see Vulkan-Docs/scripts/spirvcapgenerator.py:125:
-                        assert_eq!(s_ver, r_attr_val.strip_prefix("VK_VERSION_").unwrap());
                     } else {
                         let s_expr = Expression::try_from(attr.value()).unwrap();
                         let r_expr = Expression::try_from(r_attr_val).unwrap();

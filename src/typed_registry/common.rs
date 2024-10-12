@@ -180,11 +180,23 @@ impl fmt::Display for SemVarVersion {
     }
 }
 
+// VK_VERSION_* are the guard macros and VK_API_VERSION_* are the version number macros
+// see Vulkan-Docs/scripts/spirvcapgenerator.py:125:
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum StdVersionKind {
+    /// VK_VERSION_* are the guard macros
+    GuardMacro,
+    /// VK_API_VERSION_* are the version number macros
+    VersionNumberMacro,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, TryFromEscapedStr, DisplayEscaped)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct StdVersion {
     pub major: u32,
     pub minor: u32,
+    pub macro_kind: StdVersionKind,
 }
 
 #[derive(Debug, Clone)]
@@ -230,22 +242,34 @@ impl FromStr for StdVersion {
     type Err = StdVersionParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let ver = s
-            .strip_prefix("VK_VERSION_")
-            .or_else(|| s.strip_prefix("VK_API_VERSION_"))
-            .ok_or(StdVersionParseError::MissingPrefix)?;
-        let (major, minor) = ver
+        let (ver_str, macro_kind) = if let Some(ver) = s.strip_prefix("VK_VERSION_") {
+            (ver, StdVersionKind::GuardMacro)
+        } else if let Some(ver) = s.strip_prefix("VK_API_VERSION_") {
+            (ver, StdVersionKind::VersionNumberMacro)
+        } else {
+            return Err(StdVersionParseError::MissingPrefix);
+        };
+        let (major, minor) = ver_str
             .split_once('_')
             .ok_or(StdVersionParseError::MissingSeperator)?;
         Ok(StdVersion {
             major: major.parse()?,
             minor: minor.parse()?,
+            macro_kind,
         })
     }
 }
 
 impl fmt::Display for StdVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VK_VERSION_{}_{}", self.major, self.minor)
+        let Self {
+            major,
+            minor,
+            macro_kind,
+        } = self;
+        match macro_kind {
+            StdVersionKind::GuardMacro => write!(f, "VK_VERSION_{}_{}", major, minor),
+            StdVersionKind::VersionNumberMacro => write!(f, "VK_API_VERSION_{}_{}", major, minor),
+        }
     }
 }
