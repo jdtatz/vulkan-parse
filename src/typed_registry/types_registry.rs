@@ -8,8 +8,8 @@ use std::{
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    tokenize, DisplayEscaped, Expression, ParseResult, Token, TryFromEscapedStr, TryFromTokens,
-    TypeSpecifier, UnescapedStr, VulkanApi,
+    tokenize, DisplayEscaped, Expression, FormattedInteger, ParseResult, Token, TryFromEscapedStr,
+    TryFromTokens, TypeSpecifier, UnescapedStr, VulkanApi,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,7 +22,7 @@ pub enum PointerKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ArrayLength<'a> {
-    Static(NonZeroU32),
+    Static(FormattedInteger<NonZeroU32>),
     Constant(&'a str, bool),
 }
 
@@ -323,7 +323,7 @@ pub enum FieldLikeDeprecationKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub enum FieldLikeSizing<'a> {
-    BitfieldSize(NonZeroU8),
+    BitfieldSize(FormattedInteger<NonZeroU8>),
     ArrayShape(Vec<ArrayLength<'a>>),
 }
 
@@ -391,7 +391,7 @@ impl<'a> FieldLike<'a> {
     }
 
     #[must_use]
-    pub fn bitfield_size(&self) -> Option<NonZeroU8> {
+    pub fn bitfield_size(&self) -> Option<FormattedInteger<NonZeroU8>> {
         match self.sizing {
             Some(FieldLikeSizing::BitfieldSize(n)) => Some(n),
             _ => None,
@@ -863,10 +863,7 @@ impl<'a> crate::IntoXMLElement for IncludeType<'a> {
         &self,
         element: crate::XMLElementBuilder<'static, 'w, W>,
     ) -> Result<(), W::Error> {
-        let Self {
-            name,
-            code,
-        } = self;
+        let Self { name, code } = self;
         let elem = element.with_escaped_attribute("name", name)?;
         match code.as_ref() {
             Some(ref code) => elem.write_escaped_text(code),

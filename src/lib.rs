@@ -23,7 +23,10 @@ mod typed_registry;
 pub use crate::{
     escape_utils::*,
     into_xml::*,
-    lexer::{tokenize, Constant, Error as LexerError, Token, TokenExtras},
+    lexer::{
+        tokenize, Constant, Error as LexerError, FormattedInteger, IntegerFormat, Token,
+        TokenExtras,
+    },
     parse_xml::*,
     parser::*,
     typed_registry::*,

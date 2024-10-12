@@ -7,8 +7,8 @@ use std::{
 
 use crate::{
     lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, DisplayEscaped, FieldLike,
-    FieldLikeSizing, FnPtrType, FromEscapedStr, HandleKind, HandleType, MacroDefine,
-    MacroDefineValue, ParseResult, PointerKind, Token, UnescapedStr,
+    FieldLikeSizing, FnPtrType, FormattedInteger, FromEscapedStr, HandleKind, HandleType,
+    MacroDefine, MacroDefineValue, ParseResult, PointerKind, Token, UnescapedStr,
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -740,16 +740,16 @@ peg::parser! {
          = quiet!{[VkXMLToken::TextTag { name: "comment", text }] { text.clone() }}
          / expected!("<comment>...</comment>")
 
-        rule integer() -> u64
+        rule integer() -> FormattedInteger<u64>
          = quiet!{[VkXMLToken::C(Token::Constant(Constant::Integer(v)))] { *v }}
          / expected!("Integral Constant")
 
         /// parses the content of <member> ... </member> or <proto> ... </proto> or <param> ... </param>
         pub rule field_like() -> FieldLike<'a>
             = typed:typed_tag(<name_tag()>) sizing:(
-                ":" bitfield_size:(v:integer() { NonZeroU8::new(v.try_into().unwrap()).unwrap() }) { FieldLikeSizing::BitfieldSize(bitfield_size) }
+                ":" bitfield_size:(v:integer() { v.map(|v| NonZeroU8::new(v.try_into().unwrap()).unwrap()) }) { FieldLikeSizing::BitfieldSize(bitfield_size) }
                 / array_shape:("[" n:(
-                    v:integer() { ArrayLength::Static(NonZeroU32::new(v.try_into().unwrap()).unwrap()) }
+                    v:integer() { ArrayLength::Static(v.map(|v| NonZeroU32::new(v.try_into().unwrap()).unwrap())) }
                     / name:enum_tag() { ArrayLength::Constant(name, false) }
                     // FIXME: workaround for video.xml, send fix upstream asap
                     / name:identifier() { ArrayLength::Constant(name, true) }
@@ -1034,7 +1034,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ ArrayLength<'a> {
                 ArrayLength::Constant(c, false) => [enum = *c],
                 // FIXME: Workaround for video.xml
                 ArrayLength::Constant(c, true) => [Token::Identifier(*c)],
-                ArrayLength::Static(n) => [Constant::Integer(n.get().into())],
+                ArrayLength::Static(n) => [Constant::Integer(n.map(|n| n.get().into()))],
             },
             "]"
         );
@@ -1046,7 +1046,7 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ FieldLike<'a> {
         into_vkxml_tokens!(@tokens
             TypedTag::<true>(self),
             match &self.sizing => {
-                Some(FieldLikeSizing::BitfieldSize(bitfield_size)) => [":", Constant::Integer(bitfield_size.get().into())],
+                Some(FieldLikeSizing::BitfieldSize(bitfield_size)) => [":", Constant::Integer(bitfield_size.map(|n| n.get().into()))],
                 Some(FieldLikeSizing::ArrayShape(array_shape)) => [array_shape],
                 None => [],
             },
@@ -1194,7 +1194,10 @@ mod tests {
                     ))),
                     Box::new(Expression::Identifier("version".into()))
                 )),
-                Box::new(Expression::Constant(Constant::Integer(0xFFF)))
+                Box::new(Expression::Constant(Constant::Integer(FormattedInteger {
+                    value: 0xFFF,
+                    fmt: crate::IntegerFormat::Hex
+                })))
             )
         );
     }

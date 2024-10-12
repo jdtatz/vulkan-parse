@@ -54,21 +54,83 @@ pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool) -> ResultIte
     ResultIter::from(Lexer::with_extras(src, extras))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum IntegerFormat {
+    Decimal,
+    Octal,
+    // TODO: split into LowerHex & UpperHex?
+    Hex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub struct FormattedInteger<T> {
+    pub value: T,
+    pub fmt: IntegerFormat,
+}
+
+impl<T> FormattedInteger<T> {
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> FormattedInteger<U> {
+        let Self { value, fmt } = self;
+        FormattedInteger {
+            value: f(value),
+            fmt,
+        }
+    }
+}
+
+impl<T: fmt::Display + fmt::Octal + fmt::LowerHex> fmt::Display for FormattedInteger<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { value, fmt } = self;
+        match fmt {
+            IntegerFormat::Decimal => write!(f, "{value}"),
+            IntegerFormat::Octal => write!(f, "0{value:o}"),
+            IntegerFormat::Hex => write!(f, "0x{value:x}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum Constant {
     Char(u8),
-    Integer(u64),
+    Integer(FormattedInteger<u64>),
     Float(f64),
+}
+
+impl Constant {
+    fn new_dec(i: u64) -> Self {
+        Self::Integer(FormattedInteger {
+            value: i,
+            fmt: IntegerFormat::Decimal,
+        })
+    }
+    fn new_oct(i: u64) -> Self {
+        Self::Integer(FormattedInteger {
+            value: i,
+            fmt: IntegerFormat::Octal,
+        })
+    }
+    fn new_hex(i: u64) -> Self {
+        Self::Integer(FormattedInteger {
+            value: i,
+            fmt: IntegerFormat::Hex,
+        })
+    }
 }
 
 impl PartialEq for Constant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Char(l), Self::Char(r)) => l == r,
-            (Self::Integer(l), Self::Integer(r)) => l == r,
+            (
+                Self::Integer(FormattedInteger { value: l, .. }),
+                Self::Integer(FormattedInteger { value: r, .. }),
+            ) => l == r,
             (Self::Float(l), Self::Float(r)) => l == r,
-            (Self::Float(f), Self::Integer(i)) | (Self::Integer(i), Self::Float(f)) => {
+            (Self::Float(f), Self::Integer(FormattedInteger { value: i, .. }))
+            | (Self::Integer(FormattedInteger { value: i, .. }), Self::Float(f)) => {
                 (*i as f64) == *f
             }
             _ => false,
@@ -367,10 +429,10 @@ pub enum Token<'a> {
 
     #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", |lex| lex.slice())]
     Identifier(&'a str),
-    #[regex("0(?&int_suffix)?", |_lex| Constant::Integer(0))]
-    #[regex("(?&decimal)(?&int_suffix)?", |lex| lex.slice().trim_end_matches(IS).parse().map(Constant::Integer))]
-    #[regex("0(?&octal)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[1..].trim_end_matches(IS), 8).map(Constant::Integer))]
-    #[regex("0[xX](?&hex)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[2..].trim_end_matches(IS), 16).map(Constant::Integer))]
+    #[regex("0(?&int_suffix)?", |_lex| Constant::new_dec(0))]
+    #[regex("(?&decimal)(?&int_suffix)?", |lex| lex.slice().trim_end_matches(IS).parse().map(Constant::new_dec))]
+    #[regex("0(?&octal)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[1..].trim_end_matches(IS), 8).map(Constant::new_oct))]
+    #[regex("0[xX](?&hex)(?&int_suffix)?", |lex| u64::from_str_radix(lex.slice()[2..].trim_end_matches(IS), 16).map(Constant::new_hex))]
     #[regex(r"L?'(\\.|[^\\'])+'", |lex| Constant::from_c_char(lex))]
     #[regex(r#"[0-9]+\.[0-9]*(?&exp)?(?&float_suffix)?"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
     #[regex(r#"\.[0-9]+(?&exp)?(?&float_suffix)?"#, |lex| lex.slice().trim_end_matches(FS).parse().map(Constant::Float))]
