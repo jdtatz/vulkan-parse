@@ -22,7 +22,7 @@ pub struct Command<'a> {
     pub error_codes: Option<Vec<&'a str>>,
     /// the command queues this command can be placed on
     #[vkxml(attribute(seperator = crate::CommaSeperator))]
-    pub queues: Option<enumflags2::BitFlags<Queue>>,
+    pub queues: Option<Vec<&'a str>>,
     /// the command buffer levels that this command can be called by
     #[vkxml(attribute(rename = "cmdbufferlevel", seperator = crate::CommaSeperator))]
     pub cmd_buffer_level: Option<enumflags2::BitFlags<CommandBufferLevel>>,
@@ -117,39 +117,6 @@ pub struct ImplicitExternSyncParam<'a> {
 pub struct ImplicitExternSyncParams<'a> {
     #[vkxml(child)]
     pub params: Vec<ImplicitExternSyncParam<'a>>,
-}
-
-#[enumflags2::bitflags]
-#[repr(u8)]
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    strum::EnumString,
-    strum::Display,
-    TryFromEscapedStr,
-    DisplayEscaped,
-)]
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum Queue {
-    #[strum(serialize = "transfer")]
-    Transfer,
-    #[strum(serialize = "graphics")]
-    Graphics,
-    #[strum(serialize = "compute")]
-    Compute,
-    #[strum(serialize = "sparse_binding")]
-    SparseBinding,
-    #[strum(serialize = "protected")]
-    Protected,
-    #[strum(serialize = "decode")]
-    VideoDecode,
-    #[strum(serialize = "encode")]
-    VideoEncode,
-    #[strum(serialize = "opticalflow")]
-    OpticalFlow,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr, DisplayEscaped)]

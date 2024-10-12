@@ -31,7 +31,7 @@ fn test_video_xml_conformance() {
     xml_compare(&xml, &roundtrip_xml, "Vulkan-Docs/xml/video.xml");
 }
 
-const UNORDERED_ATTRS: &[&str] = &["queues", "cmdbufferlevel", "tasks", "api"];
+const UNORDERED_ATTRS: &[&str] = &["cmdbufferlevel", "tasks", "api"];
 
 fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
     let standard_doc = Document::parse(&standard_xml).unwrap();
