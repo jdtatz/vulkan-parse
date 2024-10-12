@@ -750,7 +750,9 @@ peg::parser! {
                 ":" bitfield_size:(v:integer() { NonZeroU8::new(v.try_into().unwrap()).unwrap() }) { FieldLikeSizing::BitfieldSize(bitfield_size) }
                 / array_shape:("[" n:(
                     v:integer() { ArrayLength::Static(NonZeroU32::new(v.try_into().unwrap()).unwrap()) }
-                    / name:enum_tag() { ArrayLength::Constant(name) }
+                    / name:enum_tag() { ArrayLength::Constant(name, false) }
+                    // FIXME: workaround for video.xml, send fix upstream asap
+                    / name:identifier() { ArrayLength::Constant(name, true) }
                 ) "]" { n })+ { FieldLikeSizing::ArrayShape(array_shape) }
             )? comment:comment_tag()? {
                 FieldLike {
@@ -1025,7 +1027,9 @@ impl<'t, 'a: 't> IntoVkXMLTokens<'t> for &'_ ArrayLength<'a> {
         into_vkxml_tokens!(@tokens
             "[",
             match self => {
-                ArrayLength::Constant(c) => [enum = *c],
+                ArrayLength::Constant(c, false) => [enum = *c],
+                // FIXME: Workaround for video.xml
+                ArrayLength::Constant(c, true) => [Token::Identifier(*c)],
                 ArrayLength::Static(n) => [Constant::Integer(n.get().into())],
             },
             "]"

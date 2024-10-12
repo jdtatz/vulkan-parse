@@ -23,7 +23,7 @@ pub enum PointerKind {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum ArrayLength<'a> {
     Static(NonZeroU32),
-    Constant(&'a str),
+    Constant(&'a str, bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryFromEscapedStr)]
@@ -453,8 +453,8 @@ pub struct RequiresType<'a> {
 #[cfg_attr(feature = "serialize", skip_serializing_none, derive(Serialize))]
 pub struct IncludeType<'a> {
     pub name: &'a str,
-    /// #include "{name}" is a local include
-    pub is_local_include: Option<bool>,
+    // TODO: parse to know if it's a global or local include? Or if it's guarded?
+    pub code: Option<MacroCode<'a>>,
 }
 
 impl<'a> crate::Tagged for IncludeType<'a> {
@@ -851,11 +851,9 @@ impl<'a, 'xml: 'a> crate::TryFromXML<'xml> for IncludeType<'a> {
         children: Option<I>,
         location: crate::Location,
     ) -> ParseResult<Option<Self>> {
-        let val: Option<&str> = crate::TryFromTextContent::try_from_text(children, location)?;
-        let is_local_include = val.map(|s| s.contains('"'));
         Ok(Some(IncludeType {
             name: crate::try_from_attribute(&attributes, "name", location)?,
-            is_local_include,
+            code: crate::TryFromTextContent::try_from_text(children, location)?,
         }))
     }
 }
@@ -867,18 +865,11 @@ impl<'a> crate::IntoXMLElement for IncludeType<'a> {
     ) -> Result<(), W::Error> {
         let Self {
             name,
-            is_local_include,
+            code,
         } = self;
         let elem = element.with_escaped_attribute("name", name)?;
-        match is_local_include {
-            Some(true) if name.ends_with(".h") => {
-                elem.write_escaped_text(&format_args!("#include \"{name}\""))
-            }
-            Some(true) => elem.write_escaped_text(&format_args!("#include \"{name}.h\"")),
-            Some(false) if name.ends_with(".h") => {
-                elem.write_escaped_text(&format_args!("#include &lt;{name}&gt;"))
-            }
-            Some(false) => elem.write_escaped_text(&format_args!("#include &lt;{name}.h&gt;")),
+        match code.as_ref() {
+            Some(ref code) => elem.write_escaped_text(code),
             None => elem.write_empty(),
         }
     }
