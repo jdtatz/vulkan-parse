@@ -1003,7 +1003,11 @@ impl<'t, 's, 'a: 't + 's, const NAME_IS_TAG: bool> IntoVkXMLTokens<'t>
         into_vkxml_tokens!(@tokens
             "const" if field.is_const,
             "struct" if matches!(field.type_name, TypeSpecifier::Struct(_)),
-            type = field.type_name.as_identifier(),
+            // FIXME: Workaround because it should be `typedef struct <type>__IOSurface</type>* <name>IOSurfaceRef</name>;` not `typedef struct __IOSurface* <name>IOSurfaceRef</name>;`
+            match field.type_name.as_identifier() => {
+                "__IOSurface" => [Token::Identifier("__IOSurface")],
+                name => [type = name],
+            },
             field.pointer_kind.as_ref(),
             match NAME_IS_TAG => {
                 true => [name = field.name],

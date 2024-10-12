@@ -34,7 +34,6 @@ fn test_video_xml_conformance() {
 const UNORDERED_ATTRS: &[&str] = &["queues", "cmdbufferlevel", "tasks", "api"];
 
 fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
-    let standard_xml = standard_xml.replace("__IOSurface*", "<type>__IOSurface</type>*");
     let standard_doc = Document::parse(&standard_xml).unwrap();
     let roundtrip_doc = Document::parse(roundtrip_xml).unwrap();
 
