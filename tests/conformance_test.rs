@@ -54,11 +54,6 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
             for attr in s.attributes() {
                 let r_attr_val = if let Some(r_attr_val) = r.attribute(attr.name()) {
                     r_attr_val
-                } else if attr.name() == "requires" {
-                    // 'bitvalues' implies a stronger relationship then 'requires' which only implies a dependency
-                    // but in the generator there is nothing diffrent between the 2
-                    // see Vulkan-Docs/scripts/reg.py:1251:
-                    r.attribute("bitvalues").unwrap()
                 } else {
                     todo!()
                 };

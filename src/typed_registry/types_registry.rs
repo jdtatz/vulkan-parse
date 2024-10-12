@@ -616,6 +616,9 @@ impl<'a> BaseTypeType<'a> {
     }
 }
 
+// 'bitvalues' implies a stronger relationship then 'requires' which only implies a dependency
+// but in the generator there is nothing diffrent between the 2
+// see Vulkan-Docs/scripts/reg.py:1251:
 /// <type category="bitmask">
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -623,7 +626,8 @@ pub struct BitmaskType<'a> {
     /// name of this type
     pub name: &'a str,
     pub is_64bits: bool,
-    pub has_bitvalues: bool,
+    pub bitvalues: Option<&'a str>,
+    pub requires: Option<&'a str>,
     pub api: Option<VulkanApi>,
 }
 
@@ -639,9 +643,8 @@ impl<'a> BitmaskType<'a> {
 
     /// name of an enum definition that defines the valid values for parameters of this type
     #[must_use]
-    pub fn bitvalues(&self) -> Option<String> {
-        self.has_bitvalues
-            .then(|| self.name.replace("Flags", "FlagBits"))
+    pub fn bitvalues(&self) -> Option<&'a str> {
+        self.bitvalues.or(self.requires)
     }
 }
 
@@ -881,9 +884,8 @@ impl<'a, 'xml: 'a> crate::TryFromXML<'xml> for BitmaskType<'a> {
     ) -> ParseResult<Option<Self>> {
         Ok(Some(BitmaskType {
             //  FIXME add check that name.replace("Flags", "FlagBits") == attribute("requires").xor(attribute("bitvalues"))
-            has_bitvalues: attributes
-                .iter()
-                .any(|a| a.name.as_str() == "requires" || a.name.as_str() == "bitvalues"),
+            bitvalues: crate::try_from_attribute(&attributes, "bitvalues", location)?,
+            requires: crate::try_from_attribute(&attributes, "requires", location)?,
             api: crate::try_from_attribute(&attributes, "api", location)?,
             ..TryFromTokens::try_from_elements(&mut children.into_iter().flatten(), location)?
         }))
@@ -895,8 +897,9 @@ impl<'a> crate::IntoXMLElement for BitmaskType<'a> {
         &self,
         element: crate::XMLElementBuilder<'static, 'w, W>,
     ) -> Result<(), W::Error> {
-        element // TODO requires / bitvalues
-            .with_escaped_attribute("bitvalues", &self.bitvalues().as_deref())?
+        element
+            .with_escaped_attribute("bitvalues", &self.bitvalues)?
+            .with_escaped_attribute("requires", &self.requires)?
             .with_escaped_attribute("api", &self.api.as_ref())?
             .write_tokens(self)
     }

@@ -831,7 +831,7 @@ peg::parser! {
 
         /// <type category="bitmask">
         pub rule type_bitmask() -> BitmaskType<'a>
-          = "typedef" is_64bits:(bitmask_flags() / bitmask64_flags()) name:name_tag() ";" { BitmaskType {name, is_64bits, has_bitvalues: false, api: None } }
+          = "typedef" is_64bits:(bitmask_flags() / bitmask64_flags()) name:name_tag() ";" { BitmaskType {name, is_64bits, bitvalues: None, requires: None, api: None } }
     }
 }
 
