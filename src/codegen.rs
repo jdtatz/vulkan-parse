@@ -5,8 +5,8 @@ use crate::{
         BaseTypeType, BitmaskEnum, BitmaskType, Command, CommentendChildren, ConstantEnum,
         DefineType, DefinitionOrAlias, EnumType, Enums, EnumsValues, Extension, Feature, FnPtrType,
         Format, HandleType, IncludeType, Items, Platform, PseudoExtension, Registry, RequiresType,
-        SpirvCapability, SpirvExtension, StructType, Tag, Type, UnionType, UnusedEnum, ValueEnum,
-        WrappedExtension,
+        SpirvCapability, SpirvExtension, StructType, SyncChild, Tag, Type, UnionType, UnusedEnum,
+        ValueEnum, VideoCodec, WrappedExtension,
     },
     UnescapedStr,
 };
@@ -55,6 +55,8 @@ pub enum CodegenUnit<'a> {
     Format(Format<'a>),
     SpirvExtension(SpirvExtension<'a>),
     SpirvCapability(SpirvCapability<'a>),
+    Sync(SyncChild<'a>),
+    VideoCodec(VideoCodec<'a>),
 }
 
 impl<'a> From<Platform<'a>> for CodegenUnit<'a> {
@@ -137,6 +139,18 @@ impl<'a> From<SpirvCapability<'a>> for CodegenUnit<'a> {
     }
 }
 
+impl<'a> From<SyncChild<'a>> for CodegenUnit<'a> {
+    fn from(value: SyncChild<'a>) -> Self {
+        Self::Sync(value)
+    }
+}
+
+impl<'a> From<VideoCodec<'a>> for CodegenUnit<'a> {
+    fn from(value: VideoCodec<'a>) -> Self {
+        Self::VideoCodec(value)
+    }
+}
+
 impl<'a> From<Registry<'a>> for Vec<CodegenUnit<'a>> {
     fn from(registry: Registry<'a>) -> Self {
         let mut units = Vec::new();
@@ -201,6 +215,12 @@ impl<'a> From<Registry<'a>> for Vec<CodegenUnit<'a>> {
                     capabilities,
                     comment: _,
                 } => units.extend(capabilities.into_iter().map(CodegenUnit::from)),
+                Items::Sync { sync, comment: _ } => {
+                    units.extend(sync.into_iter().map(CodegenUnit::from))
+                }
+                Items::VideoCodecs { codecs, comment: _ } => {
+                    units.extend(codecs.into_iter().map(CodegenUnit::from))
+                }
             }
         }
         units

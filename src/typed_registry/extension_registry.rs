@@ -4,6 +4,7 @@ use std::fmt;
 use super::{
     common::StdVersion,
     feature_registry::{Require, VulkanApi},
+    FeatureChild,
 };
 use crate::{UnescapedStr, VulkanDependencies};
 
@@ -143,7 +144,7 @@ pub struct Extension<'a> {
     #[vkxml(attribute)]
     pub comment: Option<UnescapedStr<'a>>,
     #[vkxml(child)]
-    pub requires: Vec<Require<'a>>,
+    pub children: Vec<FeatureChild<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, VkXMLConv)]

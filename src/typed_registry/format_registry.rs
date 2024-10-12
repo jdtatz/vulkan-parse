@@ -181,6 +181,7 @@ pub enum ComponentNumericFormat {
     UFLOAT,
     /// signed floating-point numbers
     SFLOAT,
+    SFIXED5,
 }
 
 #[derive(

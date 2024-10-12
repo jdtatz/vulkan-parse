@@ -6,7 +6,9 @@ use super::{
     feature_registry::Feature,
     format_registry::Format,
     spirv_registry::{SpirvCapability, SpirvExtension},
+    sync_registry::SyncChild,
     types_registry::Type,
+    video_codecs_registry::VideoCodec,
 };
 use crate::UnescapedStr;
 
@@ -74,6 +76,20 @@ pub enum Items<'a> {
     SpirvCapabilities {
         #[vkxml(child)]
         capabilities: Vec<SpirvCapability<'a>>,
+        #[vkxml(attribute)]
+        comment: Option<UnescapedStr<'a>>,
+    },
+    #[vkxml(tag = "sync")]
+    Sync {
+        #[vkxml(child)]
+        sync: Vec<SyncChild<'a>>,
+        #[vkxml(attribute)]
+        comment: Option<UnescapedStr<'a>>,
+    },
+    #[vkxml(tag = "videocodecs")]
+    VideoCodecs {
+        #[vkxml(child)]
+        codecs: Vec<VideoCodec<'a>>,
         #[vkxml(attribute)]
         comment: Option<UnescapedStr<'a>>,
     },

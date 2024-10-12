@@ -22,5 +22,11 @@ pub use self::format_registry::*;
 mod spirv_registry;
 pub use self::spirv_registry::*;
 
+mod sync_registry;
+pub use self::sync_registry::*;
+
+mod video_codecs_registry;
+pub use self::video_codecs_registry::*;
+
 mod registry;
 pub use self::registry::*;

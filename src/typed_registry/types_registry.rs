@@ -792,6 +792,8 @@ pub enum MemberLimitType {
     Bits,
     #[strum(serialize = "bitmask")]
     Bitmask,
+    #[strum(serialize = "not")]
+    Not,
     #[strum(serialize = "range")]
     Range,
     #[strum(serialize = "struct")]

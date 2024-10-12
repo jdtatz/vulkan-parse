@@ -56,6 +56,8 @@ pub struct Feature<'a> {
     /// API tag used internally, not necessarily an actual API name
     #[vkxml(attribute(seperator = crate::CommaSeperator))]
     pub api: enumflags2::BitFlags<VulkanApi>,
+    #[vkxml(attribute)]
+    pub depends: Option<&'a str>,
     /// version number
     #[vkxml(attribute)]
     pub number: SemVarVersion,
@@ -106,6 +108,8 @@ pub struct Remove<'a> {
     pub feature: Option<StdVersion>,
     #[vkxml(attribute)]
     pub api: Option<VulkanApi>,
+    #[vkxml(attribute)]
+    pub reasonlink: Option<&'a str>,
     #[vkxml(attribute(rename = "depends"))]
     pub dependencies: Option<VulkanDependencies<'a>>,
     #[vkxml(child)]
@@ -127,6 +131,16 @@ pub enum RequireValue<'a> {
     Command {
         #[vkxml(attribute)]
         name: &'a str,
+        /// descriptive text with no semantic meaning
+        #[vkxml(attribute)]
+        comment: Option<UnescapedStr<'a>>,
+    },
+    #[vkxml(tag = "feature")]
+    Feature {
+        #[vkxml(attribute)]
+        name: &'a str,
+        #[vkxml(attribute(rename = "struct"))]
+        struct_name: &'a str,
         /// descriptive text with no semantic meaning
         #[vkxml(attribute)]
         comment: Option<UnescapedStr<'a>>,

@@ -44,8 +44,9 @@ pub enum EnumsValues<'a> {
         #[vkxml(child)]
         values: CommentendChildren<'a, DefinitionOrAlias<'a, BitmaskEnum<'a>>>,
     },
-    // no type attribute
+    // type="constants"
     /// Hardcoded constants, not an enumerated type
+    #[vkxml(discriminant(r#type = "constants"))]
     Constants {
         #[vkxml(child)]
         constants: CommentendChildren<'a, DefinitionOrAlias<'a, ConstantEnum<'a>>>,

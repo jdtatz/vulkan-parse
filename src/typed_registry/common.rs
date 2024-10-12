@@ -102,6 +102,9 @@ impl<'xml, T: crate::IntoXML> crate::IntoXMLChildren for CommentendChildren<'xml
 )]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum AliasDeprecationKind {
+    /// deprecated="true"
+    #[strum(serialize = "true")]
+    True,
     /// deprecated="aliased"
     #[strum(serialize = "aliased")]
     Aliased,
