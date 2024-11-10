@@ -466,7 +466,7 @@ impl<'a> crate::Tagged for IncludeType<'a> {
 pub struct MacroCode<'t>(pub Vec<Token<'t>>);
 
 impl<'t, 's: 't> TryFromEscapedStr<'s> for MacroCode<'t> {
-    type Error = crate::lexer::Error;
+    type Error = crate::lexer::SpannedLexerError;
 
     fn try_from_escaped_str(s: &'s str) -> Result<Self, Self::Error> {
         tokenize(s, true, true, true)

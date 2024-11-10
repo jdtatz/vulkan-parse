@@ -1,58 +1,99 @@
 use core::fmt::Debug;
-use std::{fmt, ops::Range, str::FromStr};
+use std::{
+    char::ParseCharError,
+    fmt,
+    num::{ParseFloatError, ParseIntError},
+    ops::Range,
+    str::FromStr,
+};
 
 use logos::{Lexer, Logos};
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub struct Error {
+#[derive(Default, Clone, PartialEq, Debug)]
+pub enum LexerError {
+    // "ErrorType must implement the Default trait because invalid tokens, i.e., literals that do not match any variant, will produce Err(ErrorType::default())."
+    #[default]
+    InvalidLiteral,
+    ObjC,
+    ParseCharError(ParseCharError),
+    ParseIntError(ParseIntError),
+    ParseFloatError(ParseFloatError),
+}
+
+impl fmt::Display for LexerError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LexerError::InvalidLiteral => write!(fmt, "invalid literal"),
+            LexerError::ObjC => write!(fmt, "unexpected Objective-C @ token"),
+            LexerError::ParseCharError(_) => write!(fmt, "failed to parse char literal"),
+            LexerError::ParseIntError(_) => write!(fmt, "failed to parse int literal"),
+            LexerError::ParseFloatError(_) => write!(fmt, "failed to parse float literal"),
+        }
+    }
+}
+
+impl std::error::Error for LexerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            LexerError::ParseCharError(e) => Some(e),
+            LexerError::ParseIntError(e) => Some(e),
+            LexerError::ParseFloatError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<ParseCharError> for LexerError {
+    fn from(e: ParseCharError) -> Self {
+        Self::ParseCharError(e)
+    }
+}
+
+impl From<ParseIntError> for LexerError {
+    fn from(e: ParseIntError) -> Self {
+        Self::ParseIntError(e)
+    }
+}
+
+impl From<ParseFloatError> for LexerError {
+    fn from(e: ParseFloatError) -> Self {
+        Self::ParseFloatError(e)
+    }
+}
+
+#[derive(PartialEq, Debug, Clone, Default)]
+pub struct SpannedLexerError {
+    pub kind: LexerError,
     pub span: Range<usize>,
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for SpannedLexerError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "unexpected token at {:?}", self.span)
+        write!(fmt, "{} at {:?}", self.kind, self.span)
     }
 }
 
-impl std::error::Error for Error {}
-
-pub struct ResultIter<'source, Token: Logos<'source>> {
-    lexer: Lexer<'source, Token>,
-}
-
-impl<'source, Token: Logos<'source>> From<Lexer<'source, Token>> for ResultIter<'source, Token> {
-    fn from(lexer: Lexer<'source, Token>) -> Self {
-        Self { lexer }
-    }
-}
-
-impl<'source, Token> Iterator for ResultIter<'source, Token>
-where
-    Token: Logos<'source> + PartialEq,
-{
-    type Item = Result<Token, Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.lexer.next().map(|token| {
-            if token == Token::ERROR {
-                Err(Error {
-                    span: self.lexer.span(),
-                })
-            } else {
-                Ok(token)
-            }
-        })
+impl std::error::Error for SpannedLexerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.kind.source()
     }
 }
 
 #[must_use]
-pub fn tokenize(src: &str, parsing_macros: bool, objc_compat: bool, keep_everything: bool) -> ResultIter<'_, Token> {
+pub fn tokenize(
+    src: &str,
+    parsing_macros: bool,
+    objc_compat: bool,
+    keep_everything: bool,
+) -> impl Iterator<Item = Result<Token, SpannedLexerError>> {
     let extras = TokenExtras {
         keep_new_lines: parsing_macros || keep_everything,
         keep_whitespace: keep_everything,
         objc_compat,
     };
-    ResultIter::from(Lexer::with_extras(src, extras))
+    Lexer::with_extras(src, extras)
+        .spanned()
+        .map(|(r, span)| r.map_err(|kind| SpannedLexerError { kind, span }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,18 +253,18 @@ impl TokenExtras {
         }
     }
 
-    fn objc_is_err(self) -> logos::FilterResult<()> {
+    fn objc_is_err(self) -> logos::FilterResult<(), LexerError> {
         if self.objc_compat {
             logos::FilterResult::Emit(())
         } else {
-            logos::FilterResult::Error
+            logos::FilterResult::Error(LexerError::ObjC)
         }
     }
 }
 
 #[derive(Logos, Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[logos(extras = TokenExtras)]
+#[logos(error = LexerError, extras = TokenExtras)]
 #[logos(subpattern decimal = r"[1-9][0-9]*")]
 #[logos(subpattern hex = r"[0-9a-fA-F]+")]
 #[logos(subpattern octal = r"[0-7]+")]
@@ -231,8 +272,6 @@ impl TokenExtras {
 #[logos(subpattern float_suffix = r"[fFlL]")]
 #[logos(subpattern int_suffix = r"[uUlL]*")]
 pub enum Token<'a> {
-    #[error]
-    Error,
     #[token("auto")]
     Auto,
     #[token("break")]
@@ -707,7 +746,6 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Identifier(id) => write!(f, "{id}"),
             Token::Constant(c) => write!(f, "{c}"),
             Token::Literal(lit) => write!(f, "\"{lit}\""),
-            Token::Error => unreachable!(),
         }?;
         Ok(())
     }
@@ -739,21 +777,26 @@ mod tests {
 
     #[test]
     fn test_float_constants() {
-        let tokens = Token::lexer("1000.0F").into_iter().collect::<Vec<_>>();
+        let tokens = Token::lexer("1000.0F")
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, &[Token::Constant(Constant::Float(1000.0))]);
     }
     #[test]
     fn test_literal() {
         let tokens = Token::lexer("\"VK_KHR_surface\"")
             .into_iter()
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, &[Token::Literal("VK_KHR_surface")]);
     }
     #[test]
     fn test_escaped_literal() {
         let tokens = Token::lexer("&quot;VK_KHR_surface&quot;")
             .into_iter()
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(tokens, &[Token::Literal("VK_KHR_surface")]);
     }
 }

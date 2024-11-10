@@ -868,7 +868,7 @@ peg::parser! {
 
 #[derive(Debug, Clone)]
 pub enum TextError {
-    Lexer(crate::lexer::Error),
+    Lexer(crate::lexer::SpannedLexerError),
     Parser(ParseError),
 }
 

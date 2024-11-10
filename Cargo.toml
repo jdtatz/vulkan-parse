@@ -14,13 +14,13 @@ required-features = ["serialize"]
 
 [dependencies]
 xmlparser = "~0.13.5"
-logos = "~0.12.1"
+logos = "~0.14.2"
 peg = "~0.8.1"
 enumflags2 = "~0.7.5"
-strum = { version = "0.24", features = ["derive"] }
-itertools = "~0.10.5"
+strum = { version = "0.26", features = ["derive"] }
+itertools = "~0.13"
 serde = { version = "1", features = ["derive"], optional = true }
-serde_with = { version = "2", optional = true }
+serde_with = { version = "3", optional = true }
 vulkan-parse-derive-helper = { path = "vulkan-parse-derive-helper" }
 
 [features]
