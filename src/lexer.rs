@@ -3,11 +3,11 @@ use std::{
     char::ParseCharError,
     fmt,
     num::{ParseFloatError, ParseIntError},
-    ops::Range,
     str::FromStr,
 };
 
 use logos::{Lexer, Logos};
+use xmlparser::StrSpan;
 
 #[derive(Default, Clone, PartialEq, Debug)]
 pub enum LexerError {
@@ -61,10 +61,42 @@ impl From<ParseFloatError> for LexerError {
     }
 }
 
+/// [`std::ops::Range<usize>`] but with Copy & Display
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl From<core::ops::Range<usize>> for Span {
+    fn from(value: core::ops::Range<usize>) -> Self {
+        let core::ops::Range { start, end } = value;
+        Self { start, end }
+    }
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { start, end } = self;
+        // TODO
+        write!(f, "[{start}, {end})")
+    }
+}
+
+impl Span {
+    fn add_offset(self, offset: usize) -> Self {
+        let Self { start, end } = self;
+        Self {
+            start: start + offset,
+            end: end + offset,
+        }
+    }
+}
+
 #[derive(PartialEq, Debug, Clone, Default)]
 pub struct SpannedLexerError {
     pub kind: LexerError,
-    pub span: Range<usize>,
+    pub span: Span,
 }
 
 impl fmt::Display for SpannedLexerError {
@@ -81,19 +113,26 @@ impl std::error::Error for SpannedLexerError {
 
 #[must_use]
 pub fn tokenize(
-    src: &str,
+    src: StrSpan,
     parsing_macros: bool,
     objc_compat: bool,
     keep_everything: bool,
-) -> impl Iterator<Item = Result<Token, SpannedLexerError>> {
+) -> impl Iterator<Item = Result<(Token, Span), SpannedLexerError>> {
     let extras = TokenExtras {
         keep_new_lines: parsing_macros || keep_everything,
         keep_whitespace: keep_everything,
         objc_compat,
     };
-    Lexer::with_extras(src, extras)
+    let src_offset = src.start();
+    Lexer::with_extras(src.as_str(), extras)
         .spanned()
-        .map(|(r, span)| r.map_err(|kind| SpannedLexerError { kind, span }))
+        .map(move |(r, span)| {
+            let span = Span::from(span).add_offset(src_offset);
+            match r {
+                Ok(token) => Ok((token, span)),
+                Err(kind) => Err(SpannedLexerError { kind, span }),
+            }
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,14 +1,17 @@
 use std::{
     borrow::Cow,
     fmt, iter,
-    num::{NonZeroU32, NonZeroU8},
+    num::{NonZeroU8, NonZeroU32},
     ops::Deref,
 };
 
+use xmlparser::StrSpan;
+
 use crate::{
-    lexer::tokenize, ArrayLength, BaseTypeType, BitmaskType, Constant, DisplayEscaped, FieldLike,
-    FieldLikeSizing, FnPtrType, FormattedInteger, FromEscapedStr, HandleKind, HandleType,
-    MacroDefine, MacroDefineValue, ParseResult, PointerKind, Token, UnescapedStr,
+    ArrayLength, BaseTypeType, BitmaskType, Constant, DisplayEscaped, FieldLike, FieldLikeSizing,
+    FnPtrType, FormattedInteger, FromEscapedStr, HandleKind, HandleType, Location, MacroDefine,
+    MacroDefineValue, ParseResult, PointerKind, Token, UnescapedStr,
+    lexer::{Span, SpannedLexerError, tokenize},
 };
 // Using the C grammer from https://web.archive.org/web/20181230041359if_/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf
 // the link is from https://rust-lang.github.io/unsafe-code-guidelines/layout/structs-and-tuples.html#c-compatible-layout-repr-c
@@ -437,31 +440,29 @@ impl<'a> From<Token<'a>> for VkXMLToken<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VkXMLTokens<'a>(pub Vec<VkXMLToken<'a>>);
+pub struct VkXMLTokens<'a>(pub Vec<(VkXMLToken<'a>, Span)>);
 
 impl<'a> Deref for VkXMLTokens<'a> {
-    type Target = [VkXMLToken<'a>];
+    type Target = [(VkXMLToken<'a>, Span)];
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'a> FromIterator<VkXMLToken<'a>> for VkXMLTokens<'a> {
-    fn from_iter<T: IntoIterator<Item = VkXMLToken<'a>>>(iter: T) -> Self {
+impl<'a> FromIterator<(VkXMLToken<'a>, Span)> for VkXMLTokens<'a> {
+    fn from_iter<T: IntoIterator<Item = (VkXMLToken<'a>, Span)>>(iter: T) -> Self {
         VkXMLTokens(iter.into_iter().collect())
     }
 }
 
-impl<'a> FromIterator<Token<'a>> for VkXMLTokens<'a> {
-    fn from_iter<T: IntoIterator<Item = Token<'a>>>(iter: T) -> Self {
-        VkXMLTokens(iter.into_iter().map(VkXMLToken::C).collect())
-    }
-}
-
 enum SimpleXMLToken<'xml> {
-    Text(&'xml str),
-    Elem { name: &'xml str, value: &'xml str },
+    Text(StrSpan<'xml>),
+    Elem {
+        name: StrSpan<'xml>,
+        value: Option<StrSpan<'xml>>,
+        span: Span,
+    },
 }
 
 struct SimpleXMLTokenIter<'i, I> {
@@ -474,28 +475,46 @@ impl<'i, 'xml: 'i, I: Iterator<Item = crate::ParseResult<crate::XMLChild<'xml>>>
     fn try_next(&mut self) -> crate::ParseResult<Option<SimpleXMLToken<'xml>>> {
         Ok(match self.it.next().transpose()? {
             None => None,
-            Some(crate::XMLChild::Text { text }) => Some(SimpleXMLToken::Text(text.as_str())),
-            Some(crate::XMLChild::EmptyElement { name, .. }) => Some(SimpleXMLToken::Elem {
-                name: name.as_str(),
-                value: "",
+            Some(crate::XMLChild::Text { text }) => Some(SimpleXMLToken::Text(text)),
+            Some(crate::XMLChild::EmptyElement {
+                name,
+                span: Location { start, end },
+                ..
+            }) => Some(SimpleXMLToken::Elem {
+                name: name,
+                value: None,
+                span: Span { start, end },
             }),
-            Some(crate::XMLChild::StartElement { name, .. }) => {
+            Some(crate::XMLChild::StartElement {
+                name,
+                span: Location { start, .. },
+                ..
+            }) => {
                 let text = match self.it.next().transpose()? {
                     Some(crate::XMLChild::Text { text }) => text,
-                    Some(crate::XMLChild::EndElement { .. }) => {
+                    Some(crate::XMLChild::EndElement {
+                        span: Location { end, .. },
+                        ..
+                    }) => {
                         return Ok(Some(SimpleXMLToken::Elem {
-                            name: name.as_str(),
-                            value: "",
+                            name: name,
+                            value: None,
+                            span: Span { start, end },
                         }));
                     }
                     _ => unreachable!(),
                 };
-                let Some(crate::XMLChild::EndElement { .. }) = self.it.next().transpose()? else {
+                let Some(crate::XMLChild::EndElement {
+                    span: Location { end, .. },
+                    ..
+                }) = self.it.next().transpose()?
+                else {
                     unreachable!()
                 };
                 Some(SimpleXMLToken::Elem {
-                    name: name.as_str(),
-                    value: text.as_str(),
+                    name: name,
+                    value: Some(text),
+                    span: Span { start, end },
                 })
             }
             _ => unreachable!(),
@@ -533,25 +552,31 @@ fn vk_token_flat_map<'a>(
     xtok: SimpleXMLToken<'a>,
     parsing_macros: bool,
     objc_compat: bool,
-) -> impl IntoIterator<Item = ParseResult<VkXMLToken<'a>>> {
+    parent_loc: crate::Location,
+) -> impl Iterator<Item = ParseResult<(VkXMLToken<'a>, Span)>> {
     // Empty elements are disallowed in vulkan's mixed pseudo-c/xml, except in <comment>
     match xtok {
-        SimpleXMLToken::Text(text) => {
-            Either::Right(tokenize(text, parsing_macros, objc_compat, false).map(move |r| {
-                r.map(VkXMLToken::C)
-                    // .map_err(|e| ErrorKind::LexerError(e).with_location(&n))
-                    .map_err(|e| todo!("{e:?}"))
-            }))
-        }
-        SimpleXMLToken::Elem { name, value } => Either::Left(iter::once(Ok(VkXMLToken::TextTag {
-            name,
-            text: UnescapedStr::from_escaped_str(value),
-        }))),
+        SimpleXMLToken::Text(text) => Either::Right(
+            tokenize(text, parsing_macros, objc_compat, false).map(move |r| match r {
+                Ok((token, span)) => Ok((VkXMLToken::C(token), span)),
+                Err(SpannedLexerError { kind, span }) => {
+                    Err(crate::ErrorKind::LexerError(kind)
+                        .with_location(parent_loc.with_span(span)))
+                }
+            }),
+        ),
+        SimpleXMLToken::Elem { name, value, span } => Either::Left(iter::once(Ok((
+            VkXMLToken::TextTag {
+                name: name.as_str(),
+                text: UnescapedStr::from_escaped_str(value.map_or("", |v| v.as_str())),
+            },
+            value.map_or(span, |v| v.range().into()),
+        )))),
     }
 }
 
 impl<'a> peg::Parse for VkXMLTokens<'a> {
-    type PositionRepr = usize;
+    type PositionRepr = Span;
     fn start(&self) -> usize {
         0
     }
@@ -560,18 +585,20 @@ impl<'a> peg::Parse for VkXMLTokens<'a> {
         pos >= self.len()
     }
 
-    fn position_repr(&self, pos: usize) -> usize {
-        pos
+    fn position_repr(&self, pos: usize) -> Self::PositionRepr {
+        self[pos].1
     }
 }
 
-pub type ParseError = peg::error::ParseError<<VkXMLTokens<'static> as peg::Parse>::PositionRepr>;
+type ParseError = peg::error::ParseError<<VkXMLTokens<'static> as peg::Parse>::PositionRepr>;
 
 pub trait TryFromTokens<'a>: Sized {
     const PARSING_MACROS: bool;
     const OBJC_COMPAT: bool;
 
-    fn try_from_tokens(tokens: &VkXMLTokens<'a>) -> Result<Self, ParseError>;
+    fn try_from_tokens(
+        tokens: &VkXMLTokens<'a>,
+    ) -> Result<Self, peg::error::ParseError<<VkXMLTokens<'a> as peg::Parse>::PositionRepr>>;
     fn try_from_elements<I: Iterator<Item = crate::ParseResult<crate::XMLChild<'a>>>>(
         it: &mut I,
         parent_loc: crate::Location,
@@ -579,14 +606,19 @@ pub trait TryFromTokens<'a>: Sized {
         let tokens = SimpleXMLTokenIter { it }
             .into_iter()
             .flat_map(|r| match r {
-                Ok(t) => Either::Left(
-                    vk_token_flat_map(t, Self::PARSING_MACROS, Self::OBJC_COMPAT).into_iter(),
-                ),
+                Ok(t) => Either::Left(vk_token_flat_map(
+                    t,
+                    Self::PARSING_MACROS,
+                    Self::OBJC_COMPAT,
+                    parent_loc,
+                )),
                 Err(e) => Either::Right(iter::once(Err(e))),
             })
             .collect::<ParseResult<_>>()?;
-        Self::try_from_tokens(&tokens)
-            .map_err(|e| crate::ErrorKind::PegParsingError(e).with_location(parent_loc))
+        Self::try_from_tokens(&tokens).map_err(|peg::error::ParseError { location, expected }| {
+            crate::ErrorKind::PegParsingError(expected)
+                .with_location(parent_loc.with_span(location))
+        })
     }
 }
 
@@ -595,7 +627,7 @@ impl<'peg, 'a: 'peg> peg::ParseElem<'peg> for VkXMLTokens<'a> {
 
     fn parse_elem(&'peg self, pos: usize) -> peg::RuleResult<Self::Element> {
         match self[pos..].first() {
-            Some(c) => peg::RuleResult::Matched(pos + 1, c),
+            Some((c, _)) => peg::RuleResult::Matched(pos + 1, c),
             None => peg::RuleResult::Failed,
         }
     }
@@ -603,7 +635,7 @@ impl<'peg, 'a: 'peg> peg::ParseElem<'peg> for VkXMLTokens<'a> {
 
 impl<'a> peg::ParseLiteral for VkXMLTokens<'a> {
     fn parse_string_literal(&self, pos: usize, literal: &str) -> peg::RuleResult<()> {
-        if let Some(VkXMLToken::C(tok)) = self.get(pos) {
+        if let Some((VkXMLToken::C(tok), _)) = self.get(pos) {
             let literal_token = Token::from_literal(literal).unwrap_or_else(|| {
                 unreachable!(
                     "This shouldn't even be possible, {literal:?} doesn't have a matching token."
@@ -617,13 +649,6 @@ impl<'a> peg::ParseLiteral for VkXMLTokens<'a> {
         } else {
             peg::RuleResult::Failed
         }
-    }
-}
-
-impl<'peg, 'a: 'peg> peg::ParseSlice<'peg> for VkXMLTokens<'a> {
-    type Slice = &'peg [VkXMLToken<'a>];
-    fn parse_slice(&'peg self, p1: usize, p2: usize) -> Self::Slice {
-        &self[p1..p2]
     }
 }
 
@@ -890,23 +915,15 @@ impl std::error::Error for TextError {
     }
 }
 
+// FIXME: Remove/fix once attribute parsing has span support
 impl<'a, 'de: 'a> TryFrom<&'de str> for Expression<'a> {
     type Error = TextError;
-
     fn try_from(value: &'de str) -> Result<Self, Self::Error> {
-        let c_toks = tokenize(value, false, false, false)
+        let c_toks = tokenize(value.into(), false, false, false)
+            .map(|r| r.map(|(t, span)| (VkXMLToken::C(t), span)))
             .collect::<Result<_, _>>()
             .map_err(TextError::Lexer)?;
         c_with_vk_ext::expr(&c_toks).map_err(TextError::Parser)
-    }
-}
-
-impl<'s, 'a: 's> TryFrom<&'s [Token<'a>]> for Expression<'a> {
-    type Error = peg::error::ParseError<usize>;
-
-    fn try_from(value: &'s [Token<'a>]) -> Result<Self, Self::Error> {
-        let c_toks = value.iter().cloned().collect();
-        c_with_vk_ext::expr(&c_toks)
     }
 }
 

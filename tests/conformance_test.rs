@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fs, io::Cursor};
 
 use roxmltree::{Document, Node};
-use vulkan_parse::{parse_registry, roundtrip::into_xml, tokenize, Expression};
+use vulkan_parse::{Expression, parse_registry, roundtrip::into_xml, tokenize};
 
 #[test]
 fn test_vk_xml_conformance() {
@@ -78,10 +78,12 @@ fn xml_compare(standard_xml: &str, roundtrip_xml: &str, path: &str) {
             let std_txt = s.text().unwrap();
             let rt_txt = r.text().unwrap();
             if std_txt != rt_txt {
-                let std_toks = tokenize(std_txt, false, true, false)
+                let std_toks = tokenize(std_txt.into(), false, true, false)
+                    .map(|r| r.map(|(t, _)| t))
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
-                let rt_toks: Vec<_> = tokenize(rt_txt, false, true, false)
+                let rt_toks: Vec<_> = tokenize(rt_txt.into(), false, true, false)
+                    .map(|r| r.map(|(t, _)| t))
                     .collect::<Result<Vec<_>, _>>()
                     .unwrap();
                 assert_eq!(

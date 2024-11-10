@@ -469,7 +469,8 @@ impl<'t, 's: 't> TryFromEscapedStr<'s> for MacroCode<'t> {
     type Error = crate::lexer::SpannedLexerError;
 
     fn try_from_escaped_str(s: &'s str) -> Result<Self, Self::Error> {
-        tokenize(s, true, true, true)
+        tokenize(s.into(), true, true, true)
+            .map(|r| r.map(|(t, _)| t))
             .collect::<Result<_, _>>()
             .map(MacroCode)
     }

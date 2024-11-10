@@ -3,7 +3,7 @@ use std::{error::Error as StdError, fmt};
 use itertools::PutBack;
 use xmlparser::{ElementEnd, StrSpan};
 
-use crate::{LexerError, ParseError, Registry, Seperator, TryFromEscapedStr};
+use crate::{LexerError, Registry, Seperator, Span, TryFromEscapedStr};
 
 #[derive(Debug)]
 pub enum ErrorKind {
@@ -15,7 +15,7 @@ pub enum ErrorKind {
     UnknownAttribute(String),
     MissingChildElement(&'static str),
     LexerError(LexerError),
-    PegParsingError(ParseError),
+    PegParsingError(peg::error::ExpectedSet),
     AttributeValueError(&'static str, Box<dyn StdError + 'static>),
     TextValueError(Box<dyn StdError + 'static>),
 }
@@ -37,7 +37,9 @@ impl fmt::Display for ErrorKind {
                 write!(f, "No child with the tag-name {tag:?} was found")
             }
             ErrorKind::LexerError(_) => write!(f, "Lexer encountered an unexpected token"),
-            ErrorKind::PegParsingError(_) => write!(f, "Mixed parsing error"),
+            ErrorKind::PegParsingError(expected) => {
+                write!(f, "Mixed parsing error, expected {}", expected)
+            }
             ErrorKind::AttributeValueError(key, _) => {
                 write!(f, "Error encountered when parsing attribute {key:?}")
             }
@@ -52,7 +54,6 @@ impl StdError for ErrorKind {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             ErrorKind::LexerError(e) => Some(e),
-            ErrorKind::PegParsingError(e) => Some(e),
             ErrorKind::AttributeValueError(_, e) => Some(&**e),
             ErrorKind::TextValueError(e) => Some(&**e),
             _ => None,
@@ -62,16 +63,19 @@ impl StdError for ErrorKind {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Location {
+    // TODO: add xml path/node?
     // node: NodeId,
     pub start: usize,
     pub end: usize,
 }
 
-impl From<&'_ StrSpan<'_>> for Location {
-    fn from(value: &StrSpan) -> Self {
+impl Location {
+    pub(crate) fn with_span(&self, span: Span) -> Self {
+        debug_assert!(self.start <= span.start);
+        debug_assert!(self.end >= span.end);
         Self {
-            start: value.start(),
-            end: value.end(),
+            start: span.start,
+            end: span.end,
         }
     }
 }
@@ -513,7 +517,10 @@ impl From<&'_ XMLChild<'_>> for Location {
             XMLChild::StartElement { span, .. } => *span,
             XMLChild::EmptyElement { span, .. } => *span,
             XMLChild::EndElement { span, .. } => *span,
-            XMLChild::Text { text } => text.into(),
+            XMLChild::Text { text } => Location {
+                start: text.start(),
+                end: text.end(),
+            },
         }
     }
 }
@@ -552,7 +559,10 @@ impl<'i, 'xml: 'i, I: Iterator<Item = ParseResult<XMLToken<'xml>>>> XMLChildIter
                         }) => attributes.push(Attribute {
                             name: local,
                             value,
-                            location: (&span).into(),
+                            location: Location {
+                                start: span.start(),
+                                end: span.end(),
+                            },
                         }),
                         Some(crate::XMLToken::ElementEnd {
                             end: xmlparser::ElementEnd::Empty,
@@ -591,7 +601,10 @@ impl<'i, 'xml: 'i, I: Iterator<Item = ParseResult<XMLToken<'xml>>>> XMLChildIter
             }) => {
                 return Ok(Some(XMLChild::EndElement {
                     name: local,
-                    span: (&span).into(),
+                    span: Location {
+                        start: span.start(),
+                        end: span.end(),
+                    },
                 }));
             }
             // invalid xml
@@ -681,9 +694,11 @@ where
         location: Location,
     ) -> ParseResult<Self> {
         if let Some(mut it) = it {
-            if let Some(XMLChild::Text { text }) = it.next().transpose()? {
-                let res = T::try_from_escaped_str(text.as_str())
-                    .map_err(|e| ErrorKind::TextValueError(Box::new(e)).with_location(&text))?;
+            if let Some(ref child @ XMLChild::Text { text }) = it.next().transpose()? {
+                let child_location = Location::from(child);
+                let res = T::try_from_escaped_str(text.as_str()).map_err(|e| {
+                    ErrorKind::TextValueError(Box::new(e)).with_location(child_location)
+                })?;
                 if let Some(c) = it.next().transpose()? {
                     Err(ErrorKind::NoMatch.with_location(&c))
                 } else {
@@ -707,9 +722,12 @@ where
         _location: Location,
     ) -> ParseResult<Self> {
         if let Some(mut it) = it {
-            if let Some(XMLChild::Text { text }) = it.next().transpose()? {
+            if let Some(ref child @ XMLChild::Text { text }) = it.next().transpose()? {
+                let child_location = Location::from(child);
                 let res = T::try_from_escaped_str(text.as_str())
-                    .map_err(|e| ErrorKind::TextValueError(Box::new(e)).with_location(&text))
+                    .map_err(|e| {
+                        ErrorKind::TextValueError(Box::new(e)).with_location(child_location)
+                    })
                     .map(Some)?;
                 if let Some(c) = it.next().transpose()? {
                     Err(ErrorKind::NoMatch.with_location(&c))
@@ -765,13 +783,10 @@ pub fn parse_registry<'xml>(document: &'xml str) -> Result<Registry<'xml>, Docum
             .transpose()
     });
     let mut it = itertools::put_back(XMLChildIter::from(&mut it));
-    Registry::try_from_children(
-        &mut it,
-        Location {
-            start: 0,
-            end: document.len(),
-        },
-    )
+    Registry::try_from_children(&mut it, Location {
+        start: 0,
+        end: document.len(),
+    })
     .map_err(|error| DocumentError { error, document })
 }
 

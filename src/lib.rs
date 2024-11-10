@@ -21,12 +21,7 @@ mod parser;
 mod typed_registry;
 
 pub use crate::{
-    escape_utils::*,
-    into_xml::*,
-    lexer::{Constant, FormattedInteger, IntegerFormat, LexerError, Token, TokenExtras, tokenize},
-    parse_xml::*,
-    parser::*,
-    typed_registry::*,
+    escape_utils::*, into_xml::*, lexer::*, parse_xml::*, parser::*, typed_registry::*,
 };
 
 pub trait Tagged {
