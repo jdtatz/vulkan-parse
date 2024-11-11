@@ -2,6 +2,6 @@ newline_style = "Unix"
 
 # Unstable options
 unstable_features = true
-version = "Two"
+style_edition = "2024"
 imports_granularity = "Crate"
 group_imports = "StdExternalCrate"

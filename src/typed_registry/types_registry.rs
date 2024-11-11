@@ -1,15 +1,15 @@
 use std::{
     borrow::Cow,
     fmt,
-    num::{NonZeroU32, NonZeroU8},
+    num::{NonZeroU8, NonZeroU32},
     ops,
     str::FromStr,
 };
 
 use super::common::{CommentendChildren, DefinitionOrAlias};
 use crate::{
-    tokenize, DisplayEscaped, Expression, FormattedInteger, ParseResult, Token, TryFromEscapedStr,
-    TryFromTokens, TypeSpecifier, UnescapedStr, VulkanApi,
+    DisplayEscaped, Expression, FormattedInteger, ParseResult, Token, TryFromEscapedStr,
+    TryFromTokens, TypeSpecifier, UnescapedStr, VulkanApi, tokenize,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

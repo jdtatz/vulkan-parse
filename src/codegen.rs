@@ -1,6 +1,7 @@
 use std::num::NonZeroU8;
 
 use crate::{
+    UnescapedStr,
     typed_registry::{
         BaseTypeType, BitmaskEnum, BitmaskType, Command, CommentendChildren, ConstantEnum,
         DefineType, DefinitionOrAlias, EnumType, Enums, EnumsValues, Extension, Feature, FnPtrType,
@@ -8,7 +9,6 @@ use crate::{
         SpirvCapability, SpirvExtension, StructType, SyncChild, Tag, Type, UnionType, UnusedEnum,
         ValueEnum, VideoCodec, WrappedExtension,
     },
-    UnescapedStr,
 };
 
 #[derive(Debug, Clone)]

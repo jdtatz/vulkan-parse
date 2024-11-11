@@ -1,10 +1,10 @@
 use darling::{
-    util::{Flag, SpannedValue},
     FromDeriveInput, FromField, FromMeta, FromVariant,
+    util::{Flag, SpannedValue},
 };
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote, ToTokens};
-use syn::{ext::IdentExt, DeriveInput, Ident, Path, PathSegment};
+use quote::{ToTokens, format_ident, quote};
+use syn::{DeriveInput, Ident, Path, PathSegment, ext::IdentExt};
 
 #[derive(Debug)]
 struct TagAttr(syn::Expr);

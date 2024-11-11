@@ -35,7 +35,11 @@ pub trait Iterable {
     fn iter<'s>(&'s self) -> Self::IT<'s>;
 }
 impl<'a, I: ?Sized + Iterable> Iterable for &'a I {
-    type IT<'i> = I::IT<'i> where Self: 'i, I: 'i;
+    type IT<'i>
+        = I::IT<'i>
+    where
+        Self: 'i,
+        I: 'i;
 
     fn iter<'s>(&'s self) -> Self::IT<'s> {
         (*self).iter()
@@ -43,14 +47,20 @@ impl<'a, I: ?Sized + Iterable> Iterable for &'a I {
 }
 
 impl<T> Iterable for [T] {
-    type IT<'i> = &'i [T] where T: 'i;
+    type IT<'i>
+        = &'i [T]
+    where
+        T: 'i;
 
     fn iter<'s>(&'s self) -> Self::IT<'s> {
         self
     }
 }
 impl<T> Iterable for Vec<T> {
-    type IT<'i> = &'i [T] where T: 'i;
+    type IT<'i>
+        = &'i [T]
+    where
+        T: 'i;
 
     fn iter<'s>(&'s self) -> Self::IT<'s> {
         self.as_slice()

@@ -1,6 +1,6 @@
 use crate::{
-    escape_utils::{Escaped, InterspersedDisplay, Seperator},
     DisplayEscaped,
+    escape_utils::{Escaped, InterspersedDisplay, Seperator},
 };
 
 pub trait MaybeIntoAttrValue {
@@ -159,6 +159,7 @@ impl<'t, 'w, W: 'w + ?Sized + XMLWriter> XMLElementBuilder<'t, 'w, W> {
         self.writer.write_element_close_end(None, self.tag_name)
     }
 
+    // FIXME: add a try_write_escaped_text and do `write_empty` if no value
     // default methods
     pub fn write_escaped_text<V: ?Sized + DisplayEscaped>(
         self,

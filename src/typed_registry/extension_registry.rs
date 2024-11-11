@@ -2,9 +2,9 @@ use core::str::FromStr;
 use std::fmt;
 
 use super::{
+    FeatureChild,
     common::StdVersion,
     feature_registry::{Require, VulkanApi},
-    FeatureChild,
 };
 use crate::{UnescapedStr, VulkanDependencies};
 
